@@ -1,21 +1,29 @@
-# Corpus sizing. The full-scale target is NOT the spec's 25k-40k figure by
-# default — it is derived from configs/risk.yaml's (alpha, delta) target by
-# src/pramaan/risk/power_analysis.py in Phase 0.5, and this file is updated
-# with the real number once that analysis runs. See docs/GUARANTEE.md for
-# the power curve this was sized from.
+# Corpus sizing. Derived from configs/risk.yaml's (alpha, delta) ladder by
+# src/pramaan/risk/power_analysis.py (Phase 0.5) - not inherited from the
+# spec's 25k-40k figure. Regenerate via `python scripts/run_power_analysis.py`.
+# Full derivation + power curve: docs/GUARANTEE.md.
 
 smoke:
   n_claims: 200
   merchants: 1
 
 dev:
-  # Placeholder until Phase 0.5's power analysis sets this for real.
-  n_claims: null
+  # min_n_for_rhat(alpha=0.10, delta=0.20, r_hat=0.3*alpha) = 45 denied
+  # claims -> /assumed_deny_rate(0.075) /test_split(0.20) = 3000. Sized
+  # with the OPTIMISTIC assumption on purpose: dev is never a reported
+  # result, so it should stay small and fast, not conservative.
+  n_claims: 3000
   merchants: 3
 
 full:
-  # Placeholder until Phase 0.5's power analysis sets this for real.
-  n_claims: null
+  # min_n_for_rhat(alpha=0.03, delta=0.10, r_hat=0.5*alpha) = 489 denied
+  # claims -> /assumed_deny_rate(0.075) /test_split(0.20) = 32600, rounded
+  # up to 35000 for headroom. Sized with the CONSERVATIVE assumption
+  # (r_hat = 0.5*alpha, "model just barely clears the bar") on purpose:
+  # undershooting the one real test set is the failure mode this whole
+  # exercise exists to avoid. Comfortably within the spec's 25k-40k target
+  # and the max_practical_full_n=60000 cap in configs/risk.yaml.
+  n_claims: 35000
   merchants: 3
 
 fraud_prevalence: 0.15
