@@ -1,0 +1,31 @@
+# Fusion model + calibration (§4 L2). Filled in for real in Phase 3.
+lightgbm:
+  # Determinism (see docs/EVALUATION_PROTOCOL.md): pinned single-threaded
+  # so the `dev`-scale determinism test (two runs -> byte-identical
+  # metrics.json) is meaningful rather than flaky.
+  num_threads: 1
+  deterministic: true
+  force_row_wise: true
+  seed: 1337
+  objective: binary
+  # Monotone constraints go on the 9 features with an a-priori known
+  # direction (e.g. n_distinct_claimants_sharing image UP => risk UP;
+  # days_account_age UP => risk DOWN). Exact feature list lands with the
+  # ~60-dim schema in Phase 3 (src/pramaan/fusion/schema.py).
+  monotone_constraints_features: []
+
+calibration:
+  method: mondrian_isotonic
+  group_by: [category, price_band]
+  min_cell_size: 50 # below this, shrink toward the global isotonic calibrator
+  ece_bins: 10
+
+reuse_index:
+  # IndexFlatIP is exact/deterministic and fast enough below ~50k vectors
+  # (smoke/dev). IndexHNSWFlat is reserved for `full` on the VM.
+  smoke: { type: flat_ip }
+  dev: { type: flat_ip }
+  full: { type: hnsw_flat, ef_construction: 200, m: 32 }
+  phash_bits: 64
+  lsh_bands: 16
+  lsh_band_bits: 4

@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use PRAMAAN, please cite it as below."
+title: "PRAMAAN: Risk-Controlled Selective Adjudication of Claim Evidence"
+version: 0.1.0
+date-released: 2026-08-25
+license: Apache-2.0
+repository-code: "https://github.com/Vaibhavgulati01/pramaan"
+authors:
+  - family-names: Gulati
+    given-names: Vaibhav

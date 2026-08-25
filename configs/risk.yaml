@@ -1,0 +1,29 @@
+# Learn-then-Test risk control (docs/GUARANTEE.md).
+#
+# alpha_delta_ladder is the pre-committed decision ladder from
+# docs/PREREGISTRATION.md: attempted in order at `full` scale, stopping at
+# the first pair that certifies. Deciding this before seeing full-scale
+# data is what keeps the certificate honest.
+alpha_delta_ladder:
+  - { alpha: 0.03, delta: 0.10 }
+  - { alpha: 0.05, delta: 0.10 }
+  - { alpha: 0.10, delta: 0.10 }
+  - { alpha: 0.10, delta: 0.20 }
+
+# If Phase 0.5's power analysis says certifying the first rung (alpha=0.03)
+# would require a full-scale corpus larger than this, alpha=0.05 becomes
+# the pre-declared PRIMARY target and alpha=0.03 is reported as the failed
+# first rung rather than silently dropped.
+max_practical_full_n: 60000
+
+min_denied_for_certification: 30 # LTT refuses to certify below this, per §4 L3
+
+# threshold grid for (t_lo, t_hi); filled in precisely during Phase 4.
+t_grid_steps: 200
+
+illustrative_dev:
+  # Relaxed parameters used ONLY at dev scale, ONLY to prove the LTT
+  # mechanism runs correctly end to end. Never reported as a result — see
+  # the DEV labeling rule in docs/EVALUATION_PROTOCOL.md.
+  alpha: 0.10
+  delta: 0.20

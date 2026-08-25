@@ -1,0 +1,12 @@
+# Normalize to LF regardless of the checkout platform (dev happens on
+# Windows, CI runs on ubuntu-latest, the VM is Linux) so a CRLF diff never
+# shows up as a spurious change or breaks a shebang/YAML parser.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.faiss binary
+*.index binary

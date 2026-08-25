@@ -1,0 +1,21 @@
+# Cost matrix (₹). The load-bearing fact: at typical order values, a false
+# positive costs more than a false negative once churn is priced in. This
+# derives the width of the REVIEW abstention band rather than it being
+# hand-chosen. See §4 L4 and the README "Why false positives cost more
+# than false negatives" section.
+false_negative:
+  # refund + COGS + reverse freight + dead stock
+  order_value_multiplier: 1.0
+  fixed_addon: 180
+
+false_positive:
+  order_value_multiplier: 1.0
+  fixed_addon: 250
+  p_churn: 0.35
+  ltv: 3000
+
+review:
+  fixed_cost: 40
+
+exploration:
+  epsilon: 0.01 # ε-exploration rate for unbiased labels in the denial region

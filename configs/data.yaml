@@ -1,0 +1,30 @@
+# Corpus sizing. The full-scale target is NOT the spec's 25k-40k figure by
+# default — it is derived from configs/risk.yaml's (alpha, delta) target by
+# src/pramaan/risk/power_analysis.py in Phase 0.5, and this file is updated
+# with the real number once that analysis runs. See docs/GUARANTEE.md for
+# the power curve this was sized from.
+
+smoke:
+  n_claims: 200
+  merchants: 1
+
+dev:
+  # Placeholder until Phase 0.5's power analysis sets this for real.
+  n_claims: null
+  merchants: 3
+
+full:
+  # Placeholder until Phase 0.5's power analysis sets this for real.
+  n_claims: null
+  merchants: 3
+
+fraud_prevalence: 0.15
+
+composition:
+  # Shares of the fraud slice specifically (spec §5), not of the whole corpus.
+  legit_real_photo: 0.85
+  fraud_synthetic_image: 0.06
+  fraud_recycled_prior_claim: 0.04
+  fraud_catalog_photo: 0.025
+  fraud_screen_rephotograph: 0.015
+  fraud_metadata_inconsistent_edit: 0.01

@@ -1,0 +1,10 @@
+services:
+  pramaan-api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./reports:/app/reports:ro
+      - ./configs:/app/configs:ro
+    environment:
+      - PRAMAAN_SCALE=dev

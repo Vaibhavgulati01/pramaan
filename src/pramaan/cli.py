@@ -1,0 +1,169 @@
+"""Single source of truth for every PRAMAAN entry point.
+
+The Makefile at the repo root is a thin wrapper that shells out to these
+commands (`python -m pramaan.cli <command>` / the installed `pramaan`
+script) so that CI, the VM, and local dev all run exactly the same code
+path. See docs/EVALUATION_PROTOCOL.md for what --scale smoke/dev/full mean.
+"""
+
+from __future__ import annotations
+
+import importlib
+import sys
+from enum import Enum
+
+import typer
+
+app = typer.Typer(
+    name="pramaan",
+    # Plain hyphen, not an em dash: some Windows terminals render this
+    # help text in a legacy codepage where non-ASCII punctuation mangles.
+    help="PRAMAAN - risk-controlled selective adjudication of claim evidence.",
+    no_args_is_help=True,
+)
+
+
+class Scale(str, Enum):
+    smoke = "smoke"
+    dev = "dev"
+    full = "full"
+
+
+# Commands land here as their phase is implemented. Landed = a real,
+# working command. Not yet landed = the command exists (so `--help` and
+# invocation never error) but says so plainly and exits 0.
+_LANDED: dict[str, str] = {}
+
+
+def _pending(command: str, phase: str) -> None:
+    typer.echo(
+        f"`pramaan {command}` is not implemented yet — it lands in {phase}. "
+        "See the implementation plan / PRAMAAN_v2_architecture.md §9 for the build order.",
+        err=True,
+    )
+    raise typer.Exit(code=0)
+
+
+@app.command()
+def setup() -> None:
+    """Validate the environment: core deps import, versions, optional deps status."""
+    checks: list[tuple[str, bool, str]] = []
+
+    def check(mod: str, optional: bool = False) -> None:
+        try:
+            m = importlib.import_module(mod)
+            version = getattr(m, "__version__", "?")
+            checks.append((mod, True, version))
+        except ImportError as exc:
+            checks.append((mod, False, "optional, skipped" if optional else str(exc)))
+
+    for mod in (
+        "numpy",
+        "scipy",
+        "pandas",
+        "sklearn",
+        "lightgbm",
+        "faiss",
+        "torch",
+        "open_clip",
+        "imagehash",
+        "PIL",
+        "shap",
+        "rapidfuzz",
+        "indic_transliteration",
+        "networkx",
+        "pydantic",
+        "hydra",
+        "fastapi",
+        "typer",
+        "piexif",
+        "yaml",
+    ):
+        check(mod)
+    check("c2pa", optional=True)
+
+    ok = True
+    typer.echo(f"Python: {sys.version.split()[0]} ({sys.executable})")
+    typer.echo("")
+    for mod, passed, detail in checks:
+        mark = "OK  " if passed else "FAIL"
+        typer.echo(f"  [{mark}] {mod:<24} {detail}")
+        if not passed and "optional" not in detail:
+            ok = False
+
+    typer.echo("")
+    if ok:
+        typer.echo("Environment OK.")
+    else:
+        typer.echo("Environment has missing required dependencies (see FAIL rows above).")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def data(
+    scale: Scale = typer.Option(Scale.dev, help="smoke (CI) or dev (local mechanism-scale)."),
+) -> None:
+    """Build PRAMAAN-Bench-v1 at the given non-full scale. Lands in Phase 1."""
+    _pending(f"data --scale {scale.value}", "Phase 1")
+
+
+@app.command(name="data-full")
+def data_full() -> None:
+    """Build the full-scale (VM) corpus, sized by the Phase 0.5 power analysis. Lands in Phase 1."""
+    _pending("data-full", "Phase 1 (documented; run on the VM)")
+
+
+@app.command()
+def train(
+    scale: Scale = typer.Option(Scale.dev, help="Which corpus tier to train the fusion model on."),
+) -> None:
+    """Fit LightGBM fusion + Mondrian isotonic calibration. Lands in Phase 3."""
+    _pending(f"train --scale {scale.value}", "Phase 3")
+
+
+@app.command()
+def eval(  # noqa: A001 - matches the spec's `make eval`
+    scale: Scale = typer.Option(Scale.dev, help="smoke, dev, or full."),
+) -> None:
+    """Run baselines, ablations, shift matrix, bootstrap CIs. Lands in Phase 6."""
+    _pending(f"eval --scale {scale.value}", "Phase 6")
+
+
+@app.command()
+def report(
+    scale: Scale = typer.Option(Scale.dev, help="smoke, dev, or full."),
+) -> None:
+    """Regenerate README-injected tables from reports/{scale}/metrics.json. Lands in Phase 6."""
+    _pending(f"report --scale {scale.value}", "Phase 6")
+
+
+@app.command()
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> None:
+    """Launch the FastAPI /adjudicate /explain /healthz service. Lands in Phase 8."""
+    _pending(f"serve (host={host}, port={port})", "Phase 8")
+
+
+@app.command(name="all")
+def all_(
+    scale: Scale = typer.Option(Scale.dev, help="smoke or dev (full runs on the VM)."),
+) -> None:
+    """setup -> data -> train -> eval -> report, for smoke or dev scale."""
+    if scale is Scale.full:
+        typer.echo(
+            "`pramaan all` does not run --scale full: that step happens on the VM per "
+            "docs/REAL_DATA_ONRAMP.md. Use `data-full`, `train`, `eval --scale full` there.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    setup()
+    data(scale=scale)
+    train(scale=scale)
+    eval(scale=scale)
+    report(scale=scale)
+
+
+if __name__ == "__main__":
+    app()
