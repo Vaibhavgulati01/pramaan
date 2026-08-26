@@ -118,7 +118,7 @@ def test_split_verification_recorded_and_prevalence_plausible(manifest) -> None:
 
 def test_transform_matches_fraud_class(manifest) -> None:
     expected = {
-        "legit_real_photo": "messaging_app_degradation",
+        "legit_real_photo": "none",
         "fraud_recycled_prior_claim": "recycle_transform",
         "fraud_screen_rephotograph": "screen_rephotograph_transform",
         "fraud_metadata_inconsistent_edit": "metadata_inconsistent_edit_transform",
@@ -127,6 +127,44 @@ def test_transform_matches_fraud_class(manifest) -> None:
     }
     for e in manifest["entries"]:
         assert e["transform"] == expected[e["fraud_class"]]
+
+
+def test_image_dimensions_carry_no_label_signal(tmp_path: Path, manifest) -> None:
+    """Regression guard for a real leak: an early build left synthetic-fraud
+    claims at 512x512 while every other class sat near 256x256, so image
+    size alone was a near-perfect fraud detector. Transport now draws the
+    output resolution independently of class - this asserts it stayed that
+    way, since the failure is silent and would inflate every pixel-model
+    number in the repo.
+    """
+    sizes_by_label: dict[int, list[int]] = {0: [], 1: []}
+    for e in manifest["entries"]:
+        with Image.open(tmp_path / e["output_path"]) as img:
+            sizes_by_label[e["label"]].append(max(img.size))
+
+    legit, fraud = sizes_by_label[0], sizes_by_label[1]
+    assert legit and fraud
+
+    # Both classes must span a comparable range - not one fixed value each.
+    assert len(set(legit)) > 1
+    assert len(set(fraud)) > 1
+
+    # And no threshold on size may separate them: the ranges must overlap
+    # substantially rather than merely differ in mean.
+    assert min(fraud) <= max(legit) and min(legit) <= max(fraud)
+    overlap_lo, overlap_hi = max(min(legit), min(fraud)), min(max(legit), max(fraud))
+    span = max(max(legit), max(fraud)) - min(min(legit), min(fraud))
+    assert (overlap_hi - overlap_lo) > 0.5 * span
+
+
+def test_every_claim_passes_through_transport(tmp_path: Path, manifest) -> None:
+    """No claim may reach the corpus at its raw source resolution - that
+    is what let source-pool resolution leak the label previously."""
+    from benchmarks.transforms import _TRANSPORT_MAX_DIM, _TRANSPORT_MIN_DIM
+
+    for e in manifest["entries"]:
+        with Image.open(tmp_path / e["output_path"]) as img:
+            assert _TRANSPORT_MIN_DIM <= max(img.size) <= _TRANSPORT_MAX_DIM
 
 
 def test_synthetic_claims_use_genimage_source_of_the_right_family(manifest) -> None:

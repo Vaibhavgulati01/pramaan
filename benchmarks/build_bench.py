@@ -50,7 +50,7 @@ from benchmarks.sources import (
 )
 from benchmarks.splits import ReconciliationReport, reconcile_splits, verify_splits
 from benchmarks.transforms import (
-    messaging_app_degradation,
+    apply_transport,
     metadata_inconsistent_edit_transform,
     recycle_transform,
     screen_rephotograph_transform,
@@ -60,12 +60,15 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_ROOT = Path("data")
 
-# Which transform each fraud class applies to its source image. Classes
-# absent here submit their source bytes unmodified (fraud_catalog_photo:
-# the "fraud" is contextual - a catalog photo passed off as damage
-# evidence - not a pixel edit).
+# Stage 1: what the fraudster did. Classes absent here contribute no
+# pixel edit - `legit_real_photo` because nothing was done to it, and
+# `fraud_catalog_photo` because its fraud is contextual (the SKU's own
+# listing image submitted as damage evidence), not an edit.
+#
+# Stage 2 (`apply_transport`) then runs on EVERY claim regardless of
+# class. See the module docstring of benchmarks/transforms.py for why
+# that symmetry is load-bearing rather than tidiness.
 _TRANSFORMS: dict[str, Callable[[bytes, random.Random], bytes]] = {
-    "legit_real_photo": messaging_app_degradation,
     "fraud_recycled_prior_claim": recycle_transform,
     "fraud_screen_rephotograph": screen_rephotograph_transform,
     "fraud_metadata_inconsistent_edit": metadata_inconsistent_edit_transform,
@@ -236,7 +239,12 @@ def build_bench(
         # Per-claim RNG so a claim's bytes depend only on (seed, claim_id),
         # not on iteration order or how many claims preceded it.
         claim_rng = random.Random(f"{seed}:{claim_id}")
-        output_bytes = transform(baseline, claim_rng) if transform else baseline
+
+        # Stage 1: the fraud edit (if any). Stage 2: transport, always -
+        # drawn independently of fraud_class so resolution and compression
+        # history carry no label signal (benchmarks/transforms.py).
+        edited = transform(baseline, claim_rng) if transform else baseline
+        output_bytes = apply_transport(edited, claim_rng)
 
         output_path = images_dir / f"{claim_id}.jpg"
         output_path.write_bytes(output_bytes)

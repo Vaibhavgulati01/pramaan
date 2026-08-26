@@ -58,6 +58,34 @@ Consequences, stated plainly:
 - A sensitivity sweep over the least-certain simulator parameters lands
   in Phase 6.
 
+## How a claim's image is constructed
+
+Two stages, and the separation matters:
+
+1. **Fraud transform** — what the fraudster did (`recycle_transform`,
+   `screen_rephotograph_transform`,
+   `metadata_inconsistent_edit_transform`). Absent for
+   `legit_real_photo` and for `fraud_catalog_photo`, whose fraud is
+   contextual rather than a pixel edit.
+2. **Transport** (`apply_transport`) — how the image reached the
+   merchant: resize into a fixed band, re-encode, and strip metadata on
+   the messaging-app route (~70%) or preserve it on the direct-upload
+   route (~30%). Applied to **every** claim, with parameters drawn
+   **independently of its class**.
+
+Stage 2's symmetry is a correctness requirement, not tidiness. §5 asks
+for degradation so "the legit class isn't separable by file cleanliness
+alone"; applying it to only one class inverts the problem. An early build
+did exactly that and left synthetic-fraud claims at 512×512 against
+~256×256 for everything else — image size alone nearly separated the
+classes. See `docs/LIMITATIONS.md`; guarded by
+`test_image_dimensions_carry_no_label_signal`.
+
+A consequence worth stating: because transport is class-independent, the
+`fraud_metadata_inconsistent_edit` signal survives only on the
+direct-upload route. That is a property of the domain — WhatsApp really
+does strip the evidence — not a defect.
+
 ## Splits, and why the corpus drops a few claims
 
 The four split constraints (§6: generator-holdout, temporal,

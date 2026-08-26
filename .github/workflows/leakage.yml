@@ -1,0 +1,65 @@
+name: Leakage audits
+
+# The Phase 1 gate, enforced on every push: entity, temporal, ring, and
+# generator-holdout leakage must all be absent. A contaminated split makes
+# the certificate in docs/GUARANTEE.md fiction, so this job is allowed to
+# be noisy and is never downgraded to a warning.
+#
+# It runs against a freshly simulated ledger rather than a built corpus:
+# the constraints are properties of the *claim graph*, not of the image
+# bytes, so this needs no network fetch and stays fast.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  leakage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: Split verification across multiple seeds
+        run: |
+          python - <<'PY'
+          import sys
+          from benchmarks.simulate_ledger import simulate_ledger
+          from benchmarks.splits import reconcile_splits, verify_splits
+
+          failures = []
+          for seed in (1, 7, 11, 42, 99):
+              ledger = simulate_ledger(
+                  n_claims=3000, merchants=["m1", "m2", "m3"], seed=seed
+              ).rename(columns={"cohort": "split"})
+
+              reconciled, recon = reconcile_splits(ledger)
+              report = verify_splits(reconciled)
+
+              status = "OK" if report.is_valid else "FAIL"
+              print(f"seed={seed}: {status} | {recon.describe()}")
+              if not report.is_valid:
+                  print(report.describe())
+                  failures.append(seed)
+
+              # Reconciliation is a safety net for genuinely ambiguous fuzzy
+              # matches, not a licence to drop claims freely. A sudden jump
+              # here means canonicalisation regressed - see docs/LIMITATIONS.md.
+              if recon.drop_rate > 0.01:
+                  print(f"seed={seed}: drop rate {recon.drop_rate:.3%} exceeds 1% budget")
+                  failures.append(seed)
+
+          if failures:
+              sys.exit(f"leakage audit failed for seeds: {sorted(set(failures))}")
+          print("\nAll seeds clean: entity, temporal, ring, and generator-holdout.")
+          PY
+
+      - name: Entity-leakage audit unit tests
+        run: pytest tests/test_entity_leakage_audit.py tests/test_benchmarks_splits.py -v

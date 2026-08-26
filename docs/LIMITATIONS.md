@@ -39,6 +39,28 @@ theoretically:
   their details, the true entity-leakage rate is unmeasured and is
   probably higher than zero.
 
+**Benchmark construction can leak the label through file properties that
+have nothing to do with fraud, and it did.** An early build of
+PRAMAAN-Bench-v1 applied the messaging-app degradation pipeline only to
+the legit class, as §5 literally describes. The consequence: ABO-sourced
+claims came through near 256×256 while GenImage-sourced synthetic-fraud
+claims stayed at 512×512, so **image dimensions alone were a near-perfect
+detector of the synthetic-fraud class** — and any pixel model trained on
+that corpus would have looked excellent for entirely spurious reasons,
+directly undermining the ablation the architecture argument rests on.
+
+Fixed by splitting construction into a *fraud transform* (what the
+fraudster did) and a *transport* step (how the image reached the
+merchant) applied to **every** claim with parameters drawn independently
+of class. Guarded by `test_image_dimensions_carry_no_label_signal`.
+
+The general lesson is worth more than the specific bug: **every property
+that differs systematically between source pools is a potential leak** —
+resolution, compression history, colour profile, file size, even encoder
+version. We have closed the ones we found and tested for. We cannot claim
+to have found them all, and any residual leak inflates the pixel model's
+apparent contribution specifically.
+
 **One generator family in the spec does not exist in the public data.**
 §6's split names SD 1.4 as a train family; the public Tiny-GenImage
 mirror declares an `SD14` label but carries no SD14 rows. We substituted

@@ -1,16 +1,35 @@
-"""Image transforms that construct PRAMAAN-Bench-v1's fraud classes from
-a pool of source images (PRAMAAN_v2_architecture.md Sec.5 composition
-table). Each transform operates on raw bytes in, raw bytes out - the
-transformed bytes become the claim's own `raw_bytes` from that point on
-(ingest/image.py's "never re-encode a claim's own bytes" rule applies
-*after* this: once a transform below has produced a claim's submitted
-image, nothing downstream re-encodes it again).
+"""Image transforms that construct PRAMAAN-Bench-v1's claims from a pool
+of source images (PRAMAAN_v2_architecture.md Sec.5 composition table).
 
-Two classes need no transform at all and aren't here:
-- legit_real_photo: `messaging_app_degradation` below IS its transform.
-- fraud_catalog_photo: the SKU's own (unmodified) catalog image is
-  submitted as-is - the "fraud" is contextual (same bytes as a known
-  catalog photo, submitted as claim evidence), not a pixel transform.
+Every claim is built in **two stages**, and keeping them separate is what
+stops the benchmark from being trivially solvable:
+
+1. **Fraud transform** - what the fraudster did (recycled someone's
+   photo, re-shot a screen, edited so the EXIF thumbnail desyncs). Absent
+   for `legit_real_photo`, and for `fraud_catalog_photo`, whose fraud is
+   contextual - the SKU's own listing image submitted as damage evidence
+   - rather than a pixel edit.
+
+2. **Transport** (`apply_transport`) - how the image reached the
+   merchant. Applied to **every** claim with parameters drawn
+   independently of its class.
+
+Stage 2 is not cosmetic. Sec.5 asks for a messaging-app degradation
+pipeline so "the legit class isn't separable by file cleanliness alone",
+and that requirement is symmetric: if only some classes are resized and
+recompressed, then resolution and compression history separate the
+classes for reasons that have nothing to do with fraud. An early build of
+this corpus had exactly that leak - synthetic-fraud images came through
+at 512x512 while every other class sat near 256x256, so image dimensions
+alone were a near-perfect fraud detector. Drawing transport identically
+for all classes removes that by construction.
+
+Real claims arrive by more than one route, so transport is a mixture: an
+image sent through a messaging app loses its metadata, while one uploaded
+straight from a desktop keeps it. That mixture is the reason
+`fraud_metadata_inconsistent_edit` is detectable at all in some claims and
+invisible in others - a property of the domain, documented in
+docs/LIMITATIONS.md rather than engineered away.
 """
 
 from __future__ import annotations
@@ -22,16 +41,50 @@ import numpy as np
 import piexif
 from PIL import Image, ImageEnhance
 
+# Transport resamples every claim into this range, independent of class.
+# Both ABO (256px) and GenImage (512px) sources land in the same
+# distribution, so source resolution cannot leak the label.
+_TRANSPORT_MIN_DIM = 384
+_TRANSPORT_MAX_DIM = 640
 
-def messaging_app_degradation(raw: bytes, rng: random.Random, max_dim: int = 1280) -> bytes:
-    """resize, metadata strip, re-JPEG Q75-90 - applied to the LEGIT
-    class specifically so it isn't separable from fraud classes by file
-    cleanliness alone (spec Sec.5)."""
+# Share of claims that arrive via a metadata-stripping messaging app; the
+# rest are direct uploads that preserve EXIF.
+_MESSAGING_APP_SHARE = 0.7
+
+
+def apply_transport(raw: bytes, rng: random.Random) -> bytes:
+    """Simulates delivery to the merchant: resize to a class-independent
+    target, re-encode as JPEG, and (for the messaging-app route) strip
+    metadata. Always the last step in building a claim's bytes.
+
+    Resizing here is unconditional and two-directional - it upscales a
+    small source as readily as it downscales a large one - because a
+    one-directional `thumbnail()` preserves whatever spread the source
+    pools happened to have, which is precisely the leak this exists to
+    close.
+    """
+    target = rng.randint(_TRANSPORT_MIN_DIM, _TRANSPORT_MAX_DIM)
+    via_messaging_app = rng.random() < _MESSAGING_APP_SHARE
+
     with Image.open(io.BytesIO(raw)) as img:
+        exif = img.info.get("exif")
         img = img.convert("RGB")
-        img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+        w, h = img.size
+        scale = target / max(w, h)
+        img = img.resize(
+            (max(1, round(w * scale)), max(1, round(h * scale))),
+            Image.Resampling.LANCZOS,
+        )
+
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=rng.randint(75, 90))  # no exif= -> strips metadata
+        if via_messaging_app:
+            # No exif= kwarg -> metadata stripped, as WhatsApp et al. do.
+            img.save(buf, format="JPEG", quality=rng.randint(75, 90))
+        elif exif:
+            img.save(buf, format="JPEG", quality=rng.randint(85, 95), exif=exif)
+        else:
+            img.save(buf, format="JPEG", quality=rng.randint(85, 95))
         return buf.getvalue()
 
 
