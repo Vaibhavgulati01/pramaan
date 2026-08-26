@@ -48,3 +48,43 @@ def test_data_rejects_full_scale() -> None:
 def test_all_full_scale_is_rejected() -> None:
     result = runner.invoke(app, ["all", "--scale", "full"])
     assert result.exit_code == 1
+
+
+def test_all_passes_real_values_not_typer_sentinels(monkeypatch) -> None:
+    """`all` must call the plain implementations, not the @app.command
+    wrappers. Invoking a Typer command as an ordinary function passes its
+    `typer.Option(...)` sentinel through as the argument value - which
+    reached random.seed() as an OptionInfo and blew up in CI the first
+    time `all` did real work. Local runs never caught it because `data`
+    was only ever invoked through the CLI.
+    """
+    from pramaan import cli
+
+    captured: dict[str, object] = {}
+
+    def fake_build(tier: str, seed: int) -> None:
+        captured["tier"] = tier
+        captured["seed"] = seed
+
+    monkeypatch.setattr(cli, "_build_corpus", fake_build)
+    monkeypatch.setattr(cli, "_run_setup", lambda: True)
+
+    result = runner.invoke(app, ["all", "--scale", "smoke"])
+    assert result.exit_code == 0, result.output
+    assert captured["tier"] == "smoke"
+    assert isinstance(captured["seed"], int)
+    assert captured["seed"] == cli.DEFAULT_SEED
+
+
+def test_all_forwards_an_explicit_seed(monkeypatch) -> None:
+    from pramaan import cli
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        cli, "_build_corpus", lambda tier, seed: captured.update(tier=tier, seed=seed)
+    )
+    monkeypatch.setattr(cli, "_run_setup", lambda: True)
+
+    result = runner.invoke(app, ["all", "--scale", "smoke", "--seed", "99"])
+    assert result.exit_code == 0, result.output
+    assert captured["seed"] == 99

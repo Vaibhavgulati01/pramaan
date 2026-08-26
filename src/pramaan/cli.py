@@ -36,24 +36,27 @@ class Scale(str, Enum):
     full = "full"
 
 
-# Commands land here as their phase is implemented. Landed = a real,
-# working command. Not yet landed = the command exists (so `--help` and
-# invocation never error) but says so plainly and exits 0.
-_LANDED: dict[str, str] = {}
+DEFAULT_SEED = 1337
 
 
 def _pending(command: str, phase: str) -> None:
     typer.echo(
-        f"`pramaan {command}` is not implemented yet — it lands in {phase}. "
-        "See the implementation plan / PRAMAAN_v2_architecture.md §9 for the build order.",
+        f"`pramaan {command}` is not implemented yet - it lands in {phase}. "
+        "See PROGRESS.md / PRAMAAN_v2_architecture.md Sec.9 for the build order.",
         err=True,
     )
-    raise typer.Exit(code=0)
 
 
-@app.command()
-def setup() -> None:
-    """Validate the environment: core deps import, versions, optional deps status."""
+# Each command below is a thin @app.command wrapper over a plain `_run_*`
+# / `_build_*` function. `all` composes those plain functions, never the
+# wrappers: calling a Typer command as an ordinary Python function passes
+# its `typer.Option(...)` sentinel objects through as real argument
+# values rather than their defaults, which surfaced as a TypeError deep
+# inside random.seed() the first time `all` did real work.
+
+
+def _run_setup() -> bool:
+    """Returns True if every required dependency imported."""
     checks: list[tuple[str, bool, str]] = []
 
     def check(mod: str, optional: bool = False) -> None:
@@ -103,6 +106,13 @@ def setup() -> None:
         typer.echo("Environment OK.")
     else:
         typer.echo("Environment has missing required dependencies (see FAIL rows above).")
+    return ok
+
+
+@app.command()
+def setup() -> None:
+    """Validate the environment: core deps import, versions, optional deps status."""
+    if not _run_setup():
         raise typer.Exit(code=1)
 
 
@@ -149,7 +159,7 @@ def _build_corpus(tier: str, seed: int) -> None:
 @app.command()
 def data(
     scale: Scale = typer.Option(Scale.dev, help="smoke (CI) or dev (local mechanism-scale)."),
-    seed: int = typer.Option(1337, help="Corpus build seed; recorded in the manifest."),
+    seed: int = typer.Option(DEFAULT_SEED, help="Corpus build seed; recorded in the manifest."),
 ) -> None:
     """Build PRAMAAN-Bench-v1 at the given non-full scale."""
     if scale is Scale.full:
@@ -160,7 +170,7 @@ def data(
 
 @app.command(name="data-full")
 def data_full(
-    seed: int = typer.Option(1337, help="Corpus build seed; recorded in the manifest."),
+    seed: int = typer.Option(DEFAULT_SEED, help="Corpus build seed; recorded in the manifest."),
 ) -> None:
     """Build the full-scale (VM) corpus, sized by the Phase 0.5 power analysis."""
     _build_corpus("full", seed)
@@ -202,6 +212,7 @@ def serve(
 @app.command(name="all")
 def all_(
     scale: Scale = typer.Option(Scale.dev, help="smoke or dev (full runs on the VM)."),
+    seed: int = typer.Option(DEFAULT_SEED, help="Corpus build seed; recorded in the manifest."),
 ) -> None:
     """setup -> data -> train -> eval -> report, for smoke or dev scale."""
     if scale is Scale.full:
@@ -211,11 +222,16 @@ def all_(
             err=True,
         )
         raise typer.Exit(code=1)
-    setup()
-    data(scale=scale)
-    train(scale=scale)
-    eval(scale=scale)
-    report(scale=scale)
+
+    # Call the plain implementations, never the @app.command wrappers:
+    # invoking a Typer command as an ordinary function passes its
+    # `typer.Option(...)` sentinels through as real argument values
+    # instead of their defaults.
+    _run_setup()
+    _build_corpus(scale.value, seed)
+    _pending(f"train --scale {scale.value}", "Phase 3")
+    _pending(f"eval --scale {scale.value}", "Phase 6")
+    _pending(f"report --scale {scale.value}", "Phase 6")
 
 
 if __name__ == "__main__":
