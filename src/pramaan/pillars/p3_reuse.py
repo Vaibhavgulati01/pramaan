@@ -188,7 +188,16 @@ class ReuseFeatures:
             "reuse_matched_prior_claim": float(self.matched_prior_claim),
             "reuse_best_hamming": float(self.best_hamming),
             "reuse_best_clip_similarity": float(self.best_clip_similarity),
-            "reuse_n_candidates_examined": float(self.n_candidates_examined),
+            # NOTE: `n_candidates_examined` is deliberately NOT a model
+            # feature. It counts how many prior claims the index held, so
+            # it grows monotonically with corpus position - measured on
+            # the dev corpus it rises 691 -> 1597 -> 2041 across
+            # train/calibration/test, making it a near-perfect proxy for
+            # *which split a claim is in*. Splits here are temporal, so a
+            # model leaning on it learns the corpus timeline rather than
+            # anything about the claim. It was drawing 10.2% of total
+            # gain before removal. Still exposed on the dataclass for
+            # audit records and diagnostics, just not fed to the model.
         }
 
 

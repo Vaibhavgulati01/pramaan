@@ -202,6 +202,7 @@ def build_bench(
     min_per_generator: int | None = None,
     abo_pool: list[SourceImage] | None = None,
     genimage_pool: list[SourceImage] | None = None,
+    genimage_real_share: float = 0.4,
 ) -> dict[str, Any]:
     """Builds the corpus for one tier and returns the manifest dict.
 
@@ -256,18 +257,56 @@ def build_bench(
     if abo_pool is None:
         abo_pool = fetch_abo_images(n_needed_abo)
     if genimage_pool is None:
+        # "Real" is fetched alongside the AI families on purpose - see
+        # `real_photo_pool` below for why the corpus would otherwise be
+        # unable to test its own central claim.
         wanted = {f for families in GENERATOR_HOLDOUT.values() for f in families}
-        genimage_pool = fetch_genimage_pool(min_per_generator, wanted_generators=wanted)
+        wanted.add("Real")
+        n_real_needed = int(n_abo_groups * genimage_real_share) + 20
+        genimage_pool = fetch_genimage_pool(
+            min_per_generator,
+            wanted_generators=wanted,
+            min_real=n_real_needed,
+        )
 
     if not abo_pool:
         raise BenchBuildError("ABO source pool is empty; cannot build a corpus.")
 
     genimage_by_family: dict[str, list[SourceImage]] = {}
+    genimage_real: list[SourceImage] = []
     for img in genimage_pool:
-        if img.generator and img.generator != "Real":
+        if not img.generator:
+            continue
+        if img.generator == "Real":
+            genimage_real.append(img)
+        else:
             genimage_by_family.setdefault(img.generator, []).append(img)
 
-    sources = _assign_source_images(claims, abo_pool, genimage_by_family, rng)
+    # THE REAL-PHOTO POOL IS MIXED ON PURPOSE.
+    #
+    # Every non-synthetic claim - legit, recycled, catalog, screen-shot,
+    # metadata-edited - draws from ABO *and* GenImage's own real-photo
+    # class. An earlier build drew them all from ABO, which made the
+    # synthetic-fraud claim set and the GenImage-sourced set literally
+    # identical: "is this AI-generated?" and "did this come from
+    # GenImage?" were the same question.
+    #
+    # Under that confound the forensics pillar could separate the classes
+    # perfectly by reading encoding history rather than anything about
+    # AI generation, and no evaluation could tell the two apart. It
+    # showed up as forensics taking 72.6% of model gain with features
+    # whose actual class separation was ~1.06x. Sec.6's central ablation
+    # - "the pixel model is nearly disposable, the reuse graph is not" -
+    # is untestable on a corpus with that structure.
+    #
+    # Mixing the pools decorrelates source dataset from label, so a
+    # forensics feature can only earn gain by finding genuine
+    # AI-vs-camera structure.
+    n_real_from_genimage = int(len(genimage_real) if genimage_real else 0)
+    real_photo_pool = list(abo_pool) + genimage_real
+    rng.shuffle(real_photo_pool)
+
+    sources = _assign_source_images(claims, real_photo_pool, genimage_by_family, rng)
 
     out_dir = output_root / tier
     images_dir = out_dir / "images"
@@ -340,6 +379,9 @@ def build_bench(
         "sources": {
             "abo": {"dataset": "amaye15/amazon_berkeley_objects", "license": "CC-BY-NC-4.0"},
             "genimage": {"dataset": "TheKernel01/Tiny-GenImage", "license": "CC-BY-NC-SA-4.0"},
+            "real_photo_pool_mixed": True,
+            "genimage_real_available": n_real_from_genimage,
+            "genimage_real_share_target": genimage_real_share,
         },
         "entries": [asdict(e) for e in entries],
     }

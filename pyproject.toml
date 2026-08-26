@@ -30,6 +30,7 @@ dependencies = [
     "typer>=0.15,<0.17",
     "piexif>=1.1,<1.2",
     "PyYAML>=6.0,<6.1",
+    "matplotlib>=3.8,<3.11",
     "Faker>=25,<38",
     "datasets>=3.0,<4.0",
     "huggingface_hub>=0.24,<0.28",

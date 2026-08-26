@@ -75,23 +75,77 @@ not present).** We have deliberately not tuned the transform to make our
 own detector look better — the honest reading is that results on this
 class say little either way.
 
-**P2 separates AI-generated images, and we cannot yet fully attribute
-why.** Error-level analysis (0.60 vs 0.28) and DCT high-frequency ratio
-(0.109 vs 0.046) both separate `fraud_synthetic_image` from every other
-class by roughly 2x. Two explanations are consistent with that, and they
-have very different implications:
+**The forensics pillar dominates the fitted model, and that is a warning
+sign rather than a result.** Training on the dev corpus, gain splits
+roughly `forensics 64% / reuse 28% / behaviour 8% / provenance ~0% /
+ring ~0%` — the *opposite* of what §6 predicts (reuse load-bearing, the
+pixel-adjacent signals nearly disposable). Two of the top forensics
+features look actively suspect on inspection: `fft_peak_ratio` draws 14%
+of gain although synthetic-fraud images score *lower* on it than legit
+ones (0.66×), and `blockiness` draws 14.5% at a class separation of only
+1.06×. A model leaning that hard on features with so little class
+separation is fitting structure we have not explained.
 
-1. *Genuine.* AI-generated images really do have different frequency
-   content and compression response. This would generalise.
-2. *Dataset artifact.* GenImage images arrive with a different encoding
-   history than ABO images (generated, then packaged, then re-encoded by
-   us), and some of that survives our uniform transport step. This would
-   **not** generalise, and would inflate the pixel-adjacent pillars
-   exactly where §6's shift matrix expects them to be weakest.
+The most likely explanation is the encoding-artifact concern immediately
+below: GenImage and ABO images carry different compression histories, and
+the forensics pillar may be reading the *source dataset* rather than
+anything about fraud. The generator-holdout split and the recompression
+rows of the shift matrix (Phase 6) are the tests that decide it. **Until
+they run, no claim about pillar importance in this repository should be
+taken at face value**, including the spec's own predicted finding.
 
-We do not currently distinguish these. The generator-holdout split and
-the recompression rows of the shift matrix (Phase 6) are the tests that
-will, and this note stays until they have run.
+**A feature that measured the corpus rather than the claim reached the
+model.** `reuse_n_candidates_examined` counted how many prior claims the
+reuse index held, so it grew monotonically with corpus position — 691 →
+1597 → 2041 across train/calibration/test. Because splits here are
+temporal, that made it a near-perfect proxy for *which split a claim was
+in*, and the model drew 10.2% of its gain from it. Removed in feature
+schema 1.1.0. It was already flagged in the schema as "an artifact of
+index size, not of the claim", which is the lesson: noting a hazard in a
+comment is not the same as excluding it.
+
+**The corpus was, for a time, unable to test its own central claim.**
+This is the most consequential thing we found, and it was invisible until
+the fitted model was inspected.
+
+The first `dev` corpus drew every non-synthetic claim from ABO and every
+synthetic-fraud claim from GenImage. Checked directly, the GenImage-sourced
+claim set and the AI-generated claim set were **literally identical** (144
+claims, same members). "Is this image AI-generated?" and "did this image
+come from GenImage?" were therefore the *same question*, and the two
+datasets differ in encoding history for reasons that have nothing to do
+with AI generation.
+
+The consequence is not a minor caveat. Under that structure:
+
+- The forensics pillar could separate the classes perfectly by reading
+  compression provenance, and no evaluation on the corpus could
+  distinguish that from genuine detection.
+- Observed in the fitted model: forensics took **72.6%** of total gain,
+  with `fft_peak_ratio` the single largest feature at 16.7% — despite
+  synthetic images scoring *lower* on it than legit ones (0.66×), and
+  `blockiness` at 16.0% on a class separation of only 1.06×. A model
+  leaning that hard on features with so little separation is reading
+  something other than the label's actual cause.
+- §6's headline ablation — "removing the pixel model barely moves the
+  ensemble, while removing the reuse graph guts it" — was **untestable**.
+  Any answer would have been an artifact.
+
+**Fixed** by mixing the real-photo pool: non-synthetic claims now draw
+from ABO *and* GenImage's own real-photo class, so source dataset no
+longer predicts label and a forensics feature can only earn gain by
+finding genuine AI-vs-camera structure. Guarded by
+`test_source_dataset_does_not_predict_the_label`.
+
+**What remains uncertain even after the fix.** Decorrelating the pools
+removes the confound but does not prove the residual forensics signal is
+real. Error-level analysis (0.60 vs 0.28) and DCT high-frequency ratio
+(0.109 vs 0.046) still separate synthetic images ~2×, and that could be
+genuine AI-image structure or a subtler artifact we have not isolated.
+The generator-holdout split and the recompression rows of the shift
+matrix (Phase 6) are the tests that decide it. **Until those run, treat
+every pillar-importance number in this repository as provisional** —
+including the spec's own prediction.
 
 **One generator family in the spec does not exist in the public data.**
 §6's split names SD 1.4 as a train family; the public Tiny-GenImage

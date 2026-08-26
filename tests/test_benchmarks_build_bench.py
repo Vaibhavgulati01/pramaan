@@ -59,6 +59,9 @@ def genimage_pool():
     families = sorted({f for fams in GENERATOR_HOLDOUT.values() for f in fams})
     for idx, family in enumerate(families):
         pool.extend(_pool(20, "test/genimage", "fake", family, offset=1000 + idx * 100))
+    # GenImage's own real-photo class, which backs part of the
+    # non-synthetic pool so that source dataset does not predict label.
+    pool.extend(_pool(150, "test/genimage", "real", "Real", offset=9000))
     return pool
 
 
@@ -174,8 +177,51 @@ def test_synthetic_claims_use_genimage_source_of_the_right_family(manifest) -> N
         if e["fraud_class"] == "fraud_synthetic_image":
             assert e["source_dataset"] == "test/genimage"
             assert e["generator_family"] in GENERATOR_HOLDOUT[e["split"]]
-        else:
-            assert e["source_dataset"] == "test/abo"
+
+
+def test_source_dataset_does_not_predict_the_label(manifest) -> None:
+    """Regression guard for a corpus flaw that made the repo's central
+    ablation untestable.
+
+    An earlier build drew every non-synthetic claim from ABO and every
+    synthetic one from GenImage, so the GenImage-sourced claim set and
+    the AI-generated claim set were *literally identical*. Under that
+    structure the forensics pillar can separate the classes perfectly by
+    reading encoding history rather than anything about AI generation -
+    observed as forensics taking 72.6% of model gain on features whose
+    real class separation was ~1.06x - and no evaluation can tell the two
+    apart.
+
+    The fix is a mixed real-photo pool: non-synthetic claims draw from
+    ABO *and* GenImage's own real class, so a forensics feature can only
+    earn gain by finding genuine AI-vs-camera structure.
+    """
+    genimage_claims = {
+        e["claim_id"] for e in manifest["entries"] if e["source_dataset"] == "test/genimage"
+    }
+    synthetic_claims = {
+        e["claim_id"] for e in manifest["entries"] if e["fraud_class"] == "fraud_synthetic_image"
+    }
+    assert synthetic_claims, "test is vacuous without synthetic claims"
+    assert genimage_claims != synthetic_claims, (
+        "source dataset and AI-generation are perfectly confounded - "
+        "forensics can separate the classes without learning anything about fraud"
+    )
+
+    # Concretely: some legit claims must come from GenImage's real class.
+    legit_from_genimage = [
+        e
+        for e in manifest["entries"]
+        if e["label"] == 0 and e["source_dataset"] == "test/genimage"
+    ]
+    assert legit_from_genimage, "no legit claims drawn from GenImage's real-photo class"
+
+
+def test_both_source_datasets_appear_on_both_labels(manifest) -> None:
+    pairs = {(e["source_dataset"], e["label"]) for e in manifest["entries"]}
+    assert ("test/genimage", 0) in pairs  # GenImage real photos, legit claims
+    assert ("test/genimage", 1) in pairs  # GenImage AI images, fraud claims
+    assert ("test/abo", 0) in pairs
 
 
 def test_distinct_image_groups_get_distinct_source_images(manifest) -> None:

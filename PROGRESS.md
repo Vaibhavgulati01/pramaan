@@ -18,9 +18,9 @@ portable to that VM unmodified.
 |---|---|---|
 | 0 — Scaffold + push | ✅ done | Repo tree, Typer CLI, GH Actions CI, Docker, docs skeletons |
 | 0.5 — Power analysis | ✅ done | `risk/hb_pvalue.py`, `risk/power_analysis.py`; sized `full`=35,000 claims (α=0.03/δ=0.10 conservative), `dev`=3,000 |
-| 1 — Foundations | 🚧 in progress | Canonicalisation, leakage audit, benchmark builder, simulated ledger, splits |
-| 2 — Pillars (P3→P2→P4→P1) | 🚧 in progress | P3 (reuse graph) done incl. the mandatory temporal-leak test; P2/P4/P1 next |
-| 3 — Fusion & calibration | ⬜ not started | |
+| 1 — Foundations | ✅ done | Canonicalisation, leakage audit, benchmark builder, simulated ledger, verified splits |
+| 2 — Pillars (P3→P2→P4→P1) | ✅ done | All four pillars + rings + cost-ordered cascade; temporal-leak test verified against an injected bug |
+| 3 — Fusion & calibration | 🚧 in progress | LightGBM + monotone constraints + Mondrian isotonic done; reliability diagrams next |
 | 4 — Risk control | ⬜ not started | `certified_set.py`/`ltt.py` on top of Phase 0.5's `hb_pvalue.py` |
 | 5 — Policy & OPE | ⬜ not started | Ends with `PREREGISTRATION.md` + `EVALUATION_PROTOCOL.md` committed |
 | 6 — Evaluation infra (smoke+dev) | ⬜ not started | |
@@ -30,9 +30,9 @@ portable to that VM unmodified.
 
 ## What's implemented right now
 
-- **CLI** (`src/pramaan/cli.py`): `setup`, `data`, `data-full` are real.
-  `train/eval/report/serve` exist and are invocable but say "not yet —
-  lands in Phase N" (no crashes, no missing commands).
+- **CLI** (`src/pramaan/cli.py`): `setup`, `data`, `data-full`, `train`
+  are real. `eval/report/serve` exist and are invocable but say "not yet
+  — lands in Phase N" (no crashes, no missing commands).
 - **Ingest / canonicalisation** (`src/pramaan/ingest/`): phone, email,
   address (transliteration + PIN-bucketed fuzzy + numeric-token rule),
   device (feature only, not identity), identity resolution, and
@@ -50,7 +50,7 @@ portable to that VM unmodified.
   `risk.yaml` now carry real, derived numbers (not placeholders).
 - **CI**: `.github/workflows/ci.yml` — lint (ruff) + type (mypy) + tests
   (pytest) + CLI smoke, all green on every push.
-- **Tests**: 130+ across ingest, benchmarks, splits, risk, and CLI.
+- **Tests**: 320+ across ingest, benchmarks, splits, pillars, cascade, fusion, risk, and CLI.
 
 ## Phase 1 checklist (current)
 
@@ -69,7 +69,7 @@ portable to that VM unmodified.
 - [x] `pramaan data --scale {smoke,dev}` and `pramaan data-full` wired to `build_bench.py`
 - [x] `benchmarks/loaders.py` — timestamp-ordered corpus reader, so the temporally-correct iteration order is the default one
 - [x] Real `smoke` build end-to-end (200 claims, 3m27s cold / 7s warm), split verification green on actual output
-- [ ] Real `dev` build (3,000 claims) — running
+- [x] Real `dev` build (3,000 claims, 14.8% fraud prevalence), split verification green
 - [x] **Gate**: leakage audits green — enforced in CI by `.github/workflows/leakage.yml` (5 seeds, network-free) and by `verify_splits()` hard-failing the build
 
 ### Three real bugs Phase 1 surfaced
@@ -218,3 +218,70 @@ import together on Windows (`OMP: Error #15`), and the documented
 workaround is one its own authors say may "silently produce incorrect
 results". FAISS stays opt-in for `full` scale on Linux, where HNSW
 actually matters. A test asserts both backends agree.
+
+## Phase 3 checklist (current)
+
+- [x] `fusion/schema.py` — 48-feature typed schema, versioned, with 11 monotone constraints each carrying a written justification
+- [x] `fusion/calibration.py` — Mondrian isotonic with shrinkage, equal-mass ECE/MCE, per-group reporting
+- [x] `fusion/model.py` — LightGBM (single-threaded, deterministic) + cross-fitted calibration, split discipline enforced in code
+- [x] `fusion/pipeline.py` + `pramaan train` — cascade over the corpus, cached feature matrix
+- [ ] Reliability diagrams rendered to `reports/dev/`
+
+### Split discipline: why isotonic is cross-fitted
+
+Isotonic calibration needs held-out predictions, but the calibration
+split is reserved for Learn-then-Test and spending it here would void the
+guarantee. So the calibrator is fitted on **K-fold out-of-fold
+predictions from the train split**, leaving `calibration` untouched for
+Phase 4 and `test` sealed until Phase 6. `FusionModel.fit` *raises* if
+handed rows from either — enforced by code, not by memory.
+
+### Mondrian calibration reproduces the failure the spec predicted
+
+Measured on dev out-of-fold predictions:
+
+| | ECE |
+|---|---|
+| Overall | **0.0099** |
+| `sports\|high` | 0.0754 |
+| `beauty\|high` | 0.0702 |
+| `electronics\|high` | 0.0694 |
+
+Calibration looks excellent globally and is ~7× worse on every high-price
+cell — precisely §4 L2's "well-calibrated overall and badly calibrated on
+high-value electronics is a system that loses money exactly where money
+is." Per-group reporting is what makes that visible; a single global
+reliability curve would hide it entirely.
+
+Calibration also does real work: out-of-fold Brier improves 0.1066 →
+0.0884 (−17%).
+
+### Two problems found by inspecting the fitted model
+
+1. **A feature measuring the corpus, not the claim.**
+   `reuse_n_candidates_examined` counted prior claims in the index, so it
+   grew 691 → 1597 → 2041 across train/calibration/test — a near-perfect
+   proxy for split membership, drawing 10.2% of gain. Removed (schema
+   1.1.0). It was *already* flagged in a comment as "an artifact of index
+   size, not of the claim"; noting a hazard is not the same as excluding
+   it.
+2. **The corpus could not test its own central claim.** Forensics took
+   **72.6%** of gain — the opposite of the spec's prediction — with
+   `fft_peak_ratio` top at 16.7% despite synthetic images scoring *lower*
+   on it than legit (0.66×). Tracing that led to the real problem: every
+   non-synthetic claim came from ABO and every synthetic one from
+   GenImage, so the GenImage-sourced set and the AI-generated set were
+   **literally identical**. "Is it AI-generated?" and "did it come from
+   GenImage?" were the same question, and the forensics pillar was
+   free to separate the classes by reading encoding provenance.
+
+   §6's headline ablation was therefore **untestable** — any answer would
+   have been an artifact. Fixed by mixing the real-photo pool so
+   non-synthetic claims draw from ABO *and* GenImage's own real class,
+   decorrelating source from label. Guarded by
+   `test_source_dataset_does_not_predict_the_label`; written up in
+   `docs/LIMITATIONS.md`.
+
+   This one is worth dwelling on: the corpus passed every leakage audit,
+   every split constraint, and every unit test. It was only inspecting
+   *which features the fitted model leaned on* that exposed it.

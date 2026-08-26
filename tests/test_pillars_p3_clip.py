@@ -312,10 +312,21 @@ def test_graded_features_appear_in_the_feature_dict() -> None:
     as_dict = idx.query_then_add(
         "c2", "c_2", "m1", BASE + timedelta(days=1), PHASH_A, clip_embedding=_vec(1.0)
     ).as_dict()
-    for key in (
-        "reuse_best_hamming",
-        "reuse_best_clip_similarity",
-        "reuse_n_candidates_examined",
-    ):
+    for key in ("reuse_best_hamming", "reuse_best_clip_similarity"):
         assert key in as_dict
         assert isinstance(as_dict[key], float)
+
+
+def test_candidate_count_is_tracked_but_not_a_model_feature() -> None:
+    """`n_candidates_examined` counts prior claims in the index, so it
+    grows with corpus position and proxied split membership (691 -> 1597
+    -> 2041 across train/calibration/test), drawing 10.2% of model gain.
+    It stays available for audit records and diagnostics, but must not
+    reach the feature vector."""
+    idx = _index()
+    idx.query_then_add("c1", "c_1", "m1", BASE, PHASH_A, clip_embedding=_vec(1.0))
+    features = idx.query_then_add(
+        "c2", "c_2", "m1", BASE + timedelta(days=1), PHASH_A, clip_embedding=_vec(1.0)
+    )
+    assert features.n_candidates_examined == 1  # still measured
+    assert "reuse_n_candidates_examined" not in features.as_dict()  # not fed to the model

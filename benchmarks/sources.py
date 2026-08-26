@@ -146,6 +146,7 @@ def fetch_genimage_pool(
     cache_dir: Path = DEFAULT_CACHE_DIR,
     max_shards: int = 4,
     wanted_generators: Iterable[str] | None = None,
+    min_real: int = 0,
 ) -> list[SourceImage]:
     """Pools at least `min_per_generator` images for each wanted generator
     family, caching to disk so later calls with the same or smaller
@@ -188,7 +189,13 @@ def fetch_genimage_pool(
 
     def _missing() -> set[str]:
         counts = Counter(img.generator for img in pool if img.generator)
-        return {g for g in wanted if counts[g] < min_per_generator}
+        missing = {g for g in wanted if g != "Real" and counts[g] < min_per_generator}
+        # "Real" has its own, usually much larger, quota: it backs the
+        # non-synthetic claims that decorrelate source dataset from label
+        # (see build_bench's real_photo_pool note).
+        if "Real" in wanted and counts["Real"] < min_real:
+            missing.add("Real")
+        return missing
 
     seen_shas = {img.sha256 for img in pool}
 

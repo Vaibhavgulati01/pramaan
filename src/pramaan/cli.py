@@ -176,12 +176,67 @@ def data_full(
     _build_corpus("full", seed)
 
 
+def _run_train(tier: str, use_clip: bool) -> None:
+    import logging
+
+    from pramaan.fusion.calibration import evaluate_calibration
+    from pramaan.fusion.pipeline import train_fusion
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    root = _repo_root()
+    model, extracted = train_fusion(
+        tier,
+        data_root=root / "data",
+        model_dir=root / "data" / tier / "model",
+        use_clip=use_clip,
+    )
+    assert model.report is not None
+
+    typer.echo("")
+    typer.echo(f"Fusion model [{tier}]")
+    typer.echo(f"  train claims:        {model.report.n_train}")
+    typer.echo(f"  features:            {model.report.n_features} "
+               f"(schema {model.report.schema_version})")
+    typer.echo(f"  monotone constraints:{model.report.monotone_constraints_applied:4d}")
+    typer.echo(f"  calibrator cells:    {len(model.report.calibrator_cells)}")
+    typer.echo(
+        f"  OOF Brier:           {model.report.oof_brier_uncalibrated:.4f} raw "
+        f"-> {model.report.oof_brier_calibrated:.4f} calibrated"
+    )
+
+    # Calibration is reported on the OUT-OF-FOLD predictions, not on
+    # in-sample ones. The calibrator was fitted on out-of-fold scores, so
+    # pushing in-sample (far sharper) scores through it measures the gap
+    # between two distributions rather than calibration quality.
+    #
+    # These numbers are still optimistic - the calibrator was fitted on
+    # exactly these predictions - so they are labelled as a diagnostic,
+    # not a result. The clean held-out figure arrives in Phase 6. The
+    # calibration split is untouched here: it belongs to Learn-then-Test.
+    _, train_labels, train_groups = extracted.for_split("train")
+    assert model.oof_calibrated is not None
+    report = evaluate_calibration(model.oof_calibrated, train_labels, train_groups)
+    typer.echo("")
+    typer.echo("  Calibration (TRAIN out-of-fold; calibrator fitted on these,")
+    typer.echo("  so optimistic - a diagnostic, not a held-out result):")
+    typer.echo(
+        f"    Brier {report.overall.brier:.4f} | ECE {report.overall.ece:.4f} "
+        f"| MCE {report.overall.mce:.4f} (n={report.overall.n})"
+    )
+    if report.per_group:
+        typer.echo("    worst-calibrated cells by ECE:")
+        for name, metrics in report.worst_groups(3):
+            typer.echo(f"      {name:28s} ECE {metrics.ece:.4f} (n={metrics.n})")
+
+
 @app.command()
 def train(
     scale: Scale = typer.Option(Scale.dev, help="Which corpus tier to train the fusion model on."),
+    clip: bool = typer.Option(True, help="Use CLIP embeddings in the reuse pillar."),
 ) -> None:
-    """Fit LightGBM fusion + Mondrian isotonic calibration. Lands in Phase 3."""
-    _pending(f"train --scale {scale.value}", "Phase 3")
+    """Fit LightGBM fusion + Mondrian isotonic calibration on the train split."""
+    _run_train(scale.value, use_clip=clip)
 
 
 @app.command()
@@ -229,7 +284,9 @@ def all_(
     # instead of their defaults.
     _run_setup()
     _build_corpus(scale.value, seed)
-    _pending(f"train --scale {scale.value}", "Phase 3")
+    # smoke keeps CLIP off: the embedding dominates runtime and the tier
+    # exists to prove the pipeline executes, not to produce numbers.
+    _run_train(scale.value, use_clip=(scale is not Scale.smoke))
     _pending(f"eval --scale {scale.value}", "Phase 6")
     _pending(f"report --scale {scale.value}", "Phase 6")
 
