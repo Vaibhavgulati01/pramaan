@@ -126,25 +126,57 @@ Verified clean across 7 seeds at `dev` scale. Written up in
 - [x] `src/pramaan/pillars/p3_reuse.py` — pHash + LSH banding, CLIP semantic stage, strictly time-ordered index
 - [x] `src/pramaan/pillars/clip_embed.py` — CLIP ViT-B/32 embeddings (quickgelu variant, matching the OpenAI weights)
 - [x] **The temporal-leak test** (`tests/test_pillars_p3_temporal.py`) — and verified it fails on a deliberately leaked index, rather than trusting a green run
-- [ ] Ring detection — temporal bipartite `claimant ↔ image_cluster` graph, claim- and ring-level outputs
-- [ ] `p2_forensics.py` — QT tables, thumbnail consistency, ELA, DCT, FFT
+- [x] Ring detection (`rings.py`) — temporal bipartite `claimant ↔ image_cluster` graph with first-seen immunity; 116 rings found in the dev corpus
+- [x] `p2_forensics.py` — QT tables, thumbnail consistency, ELA, DCT, FFT (41.5 ms/claim, inside the ~40ms stage-2 budget)
 - [ ] `p4_behaviour.py` — claimant aggregates over the simulated ledger
 - [ ] `p1_provenance.py` — C2PA with graceful `UNKNOWN`
 - [ ] `cascade/` — cost-ordered orchestration with early exit
 - [ ] `SAFETY.md` written properly (pillars now exist to point at)
 
-### P3 thresholds are measured, not guessed
+### P3 thresholds are measured against ground truth, and measuring overturned two guesses
 
-| | pHash (Hamming) | CLIP (cosine) |
+Legit claims contain no reuse by construction, so any match on one is a
+false positive — which makes the legit flag rate directly measurable on
+the 3,000-claim dev corpus:
+
+| rule | legit FP | reuse recall |
 |---|---|---|
-| Chosen | **6** | **0.92** |
-| Catches | exact / near-exact reuse | crop + rotate + recolour |
-| At the chosen value | 0 FPs in 20,000 unrelated pairs | 73.3% recall, 0 FPs in 3,540 unrelated pairs |
-| Why not looser | threshold 10 flagged **19.1% of the legit class** — per-pair FP of 0.03% compounds across ~1,500 priors per claim | 0.90 gives 90% recall but 0.06%/pair, which compounds badly |
+| pHash≤6 **or** CLIP≥0.92 *(first guess)* | 20.2% | 72.7% |
+| pHash≤2 **or** CLIP≥0.96 | 4.1% | 48.7% |
+| **pHash≤2 or CLIP≥0.98** *(chosen)* | **1.5%** | **42.0%** |
+| pHash≤2 alone | 1.3% | 39.9% |
+| CLIP≥0.98 alone | 0.5% | 38.2% |
 
-The two stages are complementary by construction: crop/rotate reuse has a
-median pHash distance of 15 and is unreachable at any useful precision,
-which is exactly why the spec's design has a semantic second stage.
+Two things this overturned, both wrong when guessed from pairwise
+statistics:
+
+1. **pHash, not CLIP, was the dominant false-positive source.** `pHash≤6`
+   alone flags 6.6% of the legit class. ABO is a product catalogue and
+   pHash is a low-frequency hash, so different white-background products
+   hash alike. Per-pair rates look negligible then compound across ~1,500
+   priors per claim.
+2. **CLIP needs a far higher bar than semantic intuition suggests.** Two
+   different white sneakers sit near 0.92; *instance* identity needs 0.98.
+
+Both stages still earn their place — together 42.0% where each alone
+reaches ~39%.
+
+### P3 emits graded evidence, not just a verdict
+
+The binary flag is tuned for precision, so crop/rotate/recolour reuse
+mostly fails it (4.8% flagged). But that reuse is *not* invisible:
+
+| class | median best-Hamming | median best-CLIP |
+|---|---|---|
+| `fraud_catalog_photo` | 0 | 0.996 |
+| `fraud_recycled_prior_claim` | 12 | **0.923** |
+| `legit_real_photo` | 16 | **0.864** |
+
+Recycled claims are clearly separated from legit ones on the continuous
+features even where no threshold cleanly divides them. Reporting only a
+boolean would have thrown that away, so `ReuseFeatures` carries
+`best_hamming` / `best_clip_similarity` over every candidate examined and
+lets the fusion model (Phase 3) combine them with the other pillars.
 
 ### Vector backend: NumPy by default, FAISS opt-in
 

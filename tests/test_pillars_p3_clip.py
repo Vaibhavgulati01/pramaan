@@ -254,3 +254,68 @@ def test_numpy_store_empty_search_returns_nothing() -> None:
     sims, idxs = NumpyFlatIP(DIM).search(_vec(1.0), k=5)
     assert sims.size == 0
     assert idxs.size == 0
+
+
+# --- graded evidence --------------------------------------------------
+
+
+def test_near_miss_is_reported_even_though_it_does_not_match() -> None:
+    """The whole point of the graded features: crop/rotate/recolour reuse
+    lands around CLIP 0.93, below any threshold that keeps false
+    positives tolerable, but is obviously different from an unrelated
+    pair. Reporting only a boolean would discard that."""
+    idx = TemporalReuseIndex(clip_threshold=0.98, clip_dim=DIM)
+    idx.query_then_add("c1", "c_1", "m1", BASE, PHASH_A, clip_embedding=_vec(1.0))
+    features = idx.query_then_add(
+        "c2", "c_2", "m1", BASE + timedelta(days=1), PHASH_UNRELATED,
+        clip_embedding=_vec(4.0, 1.0),  # cos ~= 0.970, under the 0.98 bar
+    )
+    assert not features.matched_prior_claim
+    # Rejected as a match, but the near-miss is still reported.
+    assert features.best_clip_similarity == pytest.approx(0.970, abs=1e-3)
+    assert features.n_candidates_examined == 1
+
+
+def test_graded_features_populated_below_threshold() -> None:
+    idx = TemporalReuseIndex(clip_threshold=0.999, clip_dim=DIM)
+    idx.query_then_add("c1", "c_1", "m1", BASE, PHASH_A, clip_embedding=_vec(1.0))
+    features = idx.query_then_add(
+        "c2", "c_2", "m1", BASE + timedelta(days=1), PHASH_UNRELATED,
+        clip_embedding=_vec(3.0, 1.0),  # cos ~= 0.949, well under 0.999
+    )
+    assert not features.matched_prior_claim
+    assert features.best_clip_similarity == pytest.approx(0.9486, abs=1e-3)
+    assert features.n_candidates_examined == 1
+
+
+def test_best_hamming_reports_the_closest_candidate_not_only_matches() -> None:
+    near_miss = PHASH_A ^ 0b1111  # 4 bits, outside a threshold of 2
+    idx = TemporalReuseIndex(hamming_threshold=2)
+    idx.query_then_add("c1", "c_1", "m1", BASE, PHASH_A)
+    features = idx.query_then_add("c2", "c_2", "m1", BASE + timedelta(days=1), near_miss)
+    assert not features.matched_prior_claim
+    assert features.best_hamming == 4
+    assert features.n_candidates_examined == 1
+
+
+def test_graded_defaults_when_nothing_was_examined() -> None:
+    idx = _index()
+    features = idx.query_then_add("c1", "c_1", "m1", BASE, PHASH_A, clip_embedding=_vec(1.0))
+    assert features.n_candidates_examined == 0
+    assert features.best_clip_similarity == 0.0
+    assert features.best_hamming == 64
+
+
+def test_graded_features_appear_in_the_feature_dict() -> None:
+    idx = _index()
+    idx.query_then_add("c1", "c_1", "m1", BASE, PHASH_A, clip_embedding=_vec(1.0))
+    as_dict = idx.query_then_add(
+        "c2", "c_2", "m1", BASE + timedelta(days=1), PHASH_A, clip_embedding=_vec(1.0)
+    ).as_dict()
+    for key in (
+        "reuse_best_hamming",
+        "reuse_best_clip_similarity",
+        "reuse_n_candidates_examined",
+    ):
+        assert key in as_dict
+        assert isinstance(as_dict[key], float)

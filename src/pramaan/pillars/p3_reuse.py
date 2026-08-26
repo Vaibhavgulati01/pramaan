@@ -70,29 +70,36 @@ DEFAULT_PHASH_BITS = 64
 DEFAULT_LSH_BANDS = 16
 DEFAULT_BAND_BITS = 4
 
-# Hamming threshold for a pHash match, chosen from measured separation on
-# the dev corpus rather than picked by feel:
+# Both thresholds are set from a claim-level sweep against ground truth
+# ("same image_group_id") on the 3,000-claim dev corpus. Legit claims
+# contain no reuse by construction, so any match on one is a false
+# positive - which makes the legit flag rate directly measurable:
 #
-#   thr   TPR(true reuse)   FP per unrelated pair
-#     6            43.4%              <0.005%
-#    10            53.5%               0.030%
-#    16            75.0%               0.390%
+#   rule                          legit FP    reuse recall
+#   pHash<=6  OR CLIP>=0.92         20.2%          72.7%
+#   pHash<=2  OR CLIP>=0.96          4.1%          48.7%
+#   pHash<=2  OR CLIP>=0.98          1.5%          42.0%   <- chosen
+#   pHash<=2  only                   1.3%          39.9%
+#   CLIP>=0.98 only                  0.5%          38.2%
 #
-# The per-pair FP rate is misleadingly small: every claim is compared
-# against all prior claims, so a 0.03% per-pair rate compounds to a ~19%
-# chance of at least one false match per claim at dev scale. Measured
-# directly, threshold 10 flagged 19.1% of the legit class. Threshold 6
-# produced no false positives in 20,000 unrelated pairs.
+# Two things this measurement overturned, both of which were wrong when
+# guessed from pairwise statistics alone:
 #
-# The recall this costs is deliberately not recovered by loosening the
-# threshold - crop/rotate/recolour reuse has a median distance of 15 and
-# is simply not reachable by pHash at any precision worth having. That is
-# what the CLIP stage is for (Sec.4 L1's two-stage design).
-DEFAULT_HAMMING_THRESHOLD = 6
-
-# Cosine similarity for a CLIP near-duplicate. CLIP embeddings of
-# unrelated product photos routinely reach 0.8+, so this is set high.
-DEFAULT_CLIP_THRESHOLD = 0.92
+# 1. pHash, not CLIP, is the dominant false-positive source at loose
+#    settings: pHash<=6 alone flags 6.6% of the legit class. ABO is a
+#    product catalogue and pHash is a low-frequency hash, so two
+#    different white-background products hash alike. Per-pair FP rates
+#    look negligible and then compound across ~1,500 priors per claim.
+# 2. CLIP needs a far higher bar than semantic-similarity intuition
+#    suggests. Two different white sneakers sit around 0.92; instance
+#    identity needs 0.98.
+#
+# Both stages still earn their place - together they reach 42.0% where
+# each alone reaches ~39% - but the binary flag is deliberately tuned for
+# precision, because the graded evidence is carried separately by
+# `best_hamming` / `best_clip_similarity` (see ReuseFeatures).
+DEFAULT_HAMMING_THRESHOLD = 2
+DEFAULT_CLIP_THRESHOLD = 0.98
 
 
 def compute_phash(raw_bytes: bytes, hash_size: int = 8) -> int:
@@ -141,6 +148,16 @@ class ReuseFeatures:
     two claims is a very different signal from one image appearing under
     several unrelated identities, and collapsing the two would be the
     kind of nonsense inversion the monotone constraints exist to prevent.
+
+    **Graded evidence is reported separately from the binary verdict.**
+    `best_hamming` and `best_clip_similarity` describe the closest prior
+    claim found, whether or not it cleared the match thresholds. This
+    matters: crop+rotate+recolour reuse sits at a median pHash distance
+    of 15 and CLIP similarity around 0.93 - too far for any threshold
+    that keeps false positives tolerable, but plainly different from an
+    unrelated pair. Discarding that and reporting only a boolean threw
+    away the exact signal the fusion model needs to combine with the
+    other pillars, so P3 hands over the distances and lets L2 decide.
     """
 
     n_matches: int = 0
@@ -150,6 +167,13 @@ class ReuseFeatures:
     max_clip_similarity: float = 0.0
     days_since_first_seen: float = 0.0
     matched_prior_claim: bool = False
+
+    # Graded: computed over every temporally-valid candidate examined,
+    # including those that failed the thresholds above.
+    best_hamming: int = DEFAULT_PHASH_BITS
+    best_clip_similarity: float = 0.0
+    n_candidates_examined: int = 0
+
     matches: list[ReuseMatch] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, float]:
@@ -162,6 +186,9 @@ class ReuseFeatures:
             "reuse_max_clip_similarity": float(self.max_clip_similarity),
             "reuse_days_since_first_seen": float(self.days_since_first_seen),
             "reuse_matched_prior_claim": float(self.matched_prior_claim),
+            "reuse_best_hamming": float(self.best_hamming),
+            "reuse_best_clip_similarity": float(self.best_clip_similarity),
+            "reuse_n_candidates_examined": float(self.n_candidates_examined),
         }
 
 
@@ -322,29 +349,40 @@ class TemporalReuseIndex:
         embedding: np.ndarray,
         timestamp: datetime,
         already_matched: set[str],
+        examined: set[str],
         top_k: int = 20,
-    ) -> list[ReuseMatch]:
+    ) -> tuple[list[ReuseMatch], float]:
         """Semantic near-duplicates among strictly-earlier claims.
 
+        Returns (matches, best_similarity) and records every candidate it
+        looked at into `examined`, which the caller shares with the pHash
+        pass so a claim reached by both stages counts once. The best
+        similarity covers every temporally-valid candidate examined, not
+        only those clearing the threshold - that graded value is what
+        lets the fusion model see near-misses.
+
         Temporal safety comes from the same discipline as the pHash path:
-        nothing is added to the FAISS index until after its own query has
+        nothing is added to the vector store until after its own query has
         run, so every vector in it belongs to an earlier or simultaneous
         claim - and simultaneous ones are filtered out explicitly below.
         """
         if self._clip_index is None or self._clip_index.ntotal == 0:
-            return []
+            return [], 0.0
 
         query = _as_normalised_row(embedding, self._clip_dim)
         k = min(top_k, self._clip_index.ntotal)
         similarities, indices = self._clip_index.search(query, k)
 
         matches: list[ReuseMatch] = []
+        best_similarity = 0.0
         for similarity, row in zip(similarities[0], indices[0], strict=True):
             if row < 0:
                 continue
             candidate = self._claims[self._clip_row_to_claim[int(row)]]
             if candidate.timestamp >= timestamp:
                 continue
+            examined.add(candidate.claim_id)
+            best_similarity = max(best_similarity, float(similarity))
             if candidate.claim_id in already_matched:
                 continue  # pHash already found it; don't double-count
             if float(similarity) < self.clip_threshold:
@@ -360,7 +398,7 @@ class TemporalReuseIndex:
                     stage="clip",
                 )
             )
-        return matches
+        return matches, best_similarity
 
     def query_then_add(
         self,
@@ -387,6 +425,10 @@ class TemporalReuseIndex:
             raise ValueError(f"claim {claim_id} is already indexed")
 
         matches: list[ReuseMatch] = []
+        best_hamming = DEFAULT_PHASH_BITS
+        # Shared across both stages so a claim reached by pHash-LSH and by
+        # CLIP top-k counts as one candidate, not two.
+        examined: set[str] = set()
         for candidate_id in self._candidates(phash):
             candidate = self._claims[candidate_id]
             # Equal timestamps are treated as "not earlier": simultaneous
@@ -394,7 +436,9 @@ class TemporalReuseIndex:
             # make the result depend on insertion order.
             if candidate.timestamp >= timestamp:
                 continue
+            examined.add(candidate_id)
             distance = hamming_distance(phash, candidate.phash)
+            best_hamming = min(best_hamming, distance)
             if distance <= self.hamming_threshold:
                 matches.append(
                     ReuseMatch(
@@ -408,16 +452,20 @@ class TemporalReuseIndex:
                     )
                 )
 
+        best_clip = 0.0
         if clip_embedding is not None and self._clip_index is not None:
-            matches.extend(
-                self._clip_matches(
-                    clip_embedding,
-                    timestamp,
-                    already_matched={m.matched_claim_id for m in matches},
-                )
+            clip_matches, best_clip = self._clip_matches(
+                clip_embedding,
+                timestamp,
+                already_matched={m.matched_claim_id for m in matches},
+                examined=examined,
             )
+            matches.extend(clip_matches)
 
         features = _features_from_matches(matches, timestamp, own_claimant_id=claimant_id)
+        features.best_hamming = best_hamming
+        features.best_clip_similarity = best_clip
+        features.n_candidates_examined = len(examined)
 
         indexed = _IndexedClaim(claim_id, claimant_id, merchant_id, timestamp, phash)
         self._claims[claim_id] = indexed
