@@ -61,6 +61,38 @@ version. We have closed the ones we found and tested for. We cannot claim
 to have found them all, and any residual leak inflates the pixel model's
 apparent contribution specifically.
 
+**Our screen-rephotograph simulation is weaker than the real thing.**
+Measured on the dev corpus, `fraud_screen_rephotograph` claims are
+essentially indistinguishable from legit ones on the frequency features
+meant to catch them (FFT peak ratio 3545 vs 3571 for legit), and the
+transform barely moves the perceptual hash either (median Hamming 0).
+Real screen re-photography produces pronounced moiré, reduced dynamic
+range, glare, and keystone distortion; ours applies only a faint
+multiplicative grid. **This class is therefore easier than reality in one
+sense (it is nearly a clean copy, so reuse detection finds it) and harder
+in another (the forensic artifacts that would catch it in production are
+not present).** We have deliberately not tuned the transform to make our
+own detector look better — the honest reading is that results on this
+class say little either way.
+
+**P2 separates AI-generated images, and we cannot yet fully attribute
+why.** Error-level analysis (0.60 vs 0.28) and DCT high-frequency ratio
+(0.109 vs 0.046) both separate `fraud_synthetic_image` from every other
+class by roughly 2x. Two explanations are consistent with that, and they
+have very different implications:
+
+1. *Genuine.* AI-generated images really do have different frequency
+   content and compression response. This would generalise.
+2. *Dataset artifact.* GenImage images arrive with a different encoding
+   history than ABO images (generated, then packaged, then re-encoded by
+   us), and some of that survives our uniform transport step. This would
+   **not** generalise, and would inflate the pixel-adjacent pillars
+   exactly where §6's shift matrix expects them to be weakest.
+
+We do not currently distinguish these. The generator-holdout split and
+the recompression rows of the shift matrix (Phase 6) are the tests that
+will, and this note stays until they have run.
+
 **One generator family in the spec does not exist in the public data.**
 §6's split names SD 1.4 as a train family; the public Tiny-GenImage
 mirror declares an `SD14` label but carries no SD14 rows. We substituted
