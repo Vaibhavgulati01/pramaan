@@ -48,7 +48,9 @@ def _pool(n: int, dataset: str, label: str, generator: str | None, offset: int =
 
 @pytest.fixture
 def abo_pool():
-    return _pool(30, "test/abo", "real", None)
+    # Sources are drawn without replacement, so the pool must cover every
+    # distinct non-synthetic image group in the 300-claim fixture corpus.
+    return _pool(320, "test/abo", "real", None)
 
 
 @pytest.fixture
@@ -56,7 +58,7 @@ def genimage_pool():
     pool = []
     families = sorted({f for fams in GENERATOR_HOLDOUT.values() for f in fams})
     for idx, family in enumerate(families):
-        pool.extend(_pool(6, "test/genimage", "fake", family, offset=1000 + idx * 100))
+        pool.extend(_pool(20, "test/genimage", "fake", family, offset=1000 + idx * 100))
     return pool
 
 
@@ -176,6 +178,53 @@ def test_synthetic_claims_use_genimage_source_of_the_right_family(manifest) -> N
             assert e["source_dataset"] == "test/abo"
 
 
+def test_distinct_image_groups_get_distinct_source_images(manifest) -> None:
+    """Regression guard for a real corpus bug: sources were sampled WITH
+    replacement, so at dev scale 2,555 legit claims drew from 1,248
+    distinct images and 775 source images backed more than one "legit"
+    claim. P3 correctly flagged those as reuse - 57% of the legit class -
+    meaning the reuse graph was measuring a sampling artifact rather than
+    fraud. Every duplicate in the corpus must be one the generator put
+    there deliberately.
+    """
+    sha_by_group: dict[str, str] = {}
+    for e in manifest["entries"]:
+        group, sha = e["image_group_id"], e["source_sha256"]
+        if group in sha_by_group:
+            assert sha_by_group[group] == sha, f"group {group} has inconsistent sources"
+        else:
+            sha_by_group[group] = sha
+
+    shas = list(sha_by_group.values())
+    assert len(shas) == len(set(shas)), (
+        "two distinct image groups share a source image - sources must be "
+        "sampled without replacement"
+    )
+
+
+def test_legit_claims_never_duplicate_each_other(manifest) -> None:
+    """The legit class must contain no image reuse at all: a legit claim
+    sharing an image with another claim is, by this corpus's own
+    definition, the recycled-claim fraud class."""
+    legit_shas = [e["source_sha256"] for e in manifest["entries"] if e["label"] == 0]
+    assert len(legit_shas) == len(set(legit_shas))
+
+
+def test_undersized_pool_fails_loudly_rather_than_reusing_images(
+    tmp_path: Path, genimage_pool
+) -> None:
+    with pytest.raises(BenchBuildError, match="distinct image groups need one each"):
+        build_bench(
+            n_claims=300,
+            merchants=["m1"],
+            seed=1,
+            tier="smoke",
+            output_root=tmp_path,
+            abo_pool=_pool(5, "test/abo", "real", None),  # far too few
+            genimage_pool=genimage_pool,
+        )
+
+
 def test_ring_members_share_their_origin_source_image(manifest) -> None:
     by_group: dict[str, set[str]] = {}
     for e in manifest["entries"]:
@@ -220,7 +269,7 @@ def test_empty_abo_pool_raises(tmp_path: Path, genimage_pool) -> None:
         )
 
 
-def test_missing_generator_family_raises(tmp_path: Path, abo_pool) -> None:
+def test_missing_generator_family_raises(tmp_path: Path) -> None:
     with pytest.raises(BenchBuildError, match="no pooled images for generator family"):
         build_bench(
             n_claims=400,
@@ -228,7 +277,9 @@ def test_missing_generator_family_raises(tmp_path: Path, abo_pool) -> None:
             seed=1,
             tier="smoke",
             output_root=tmp_path,
-            abo_pool=abo_pool,
+            # Ample ABO, so the build gets past the pool-size check and
+            # actually reaches the missing-generator path under test.
+            abo_pool=_pool(500, "test/abo", "real", None),
             genimage_pool=[],  # no synthetic images at all
         )
 

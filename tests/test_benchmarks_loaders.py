@@ -38,14 +38,14 @@ def built(tmp_path: Path) -> Path:
     genimage = []
     families = sorted({f for fams in GENERATOR_HOLDOUT.values() for f in fams})
     for idx, family in enumerate(families):
-        genimage.extend(_pool(6, "test/genimage", "fake", family, offset=1000 + idx * 100))
+        genimage.extend(_pool(20, "test/genimage", "fake", family, offset=1000 + idx * 100))
     build_bench(
         n_claims=250,
         merchants=["m1", "m2"],
         seed=3,
         tier="dev",
         output_root=tmp_path,
-        abo_pool=_pool(25, "test/abo", "real", None),
+        abo_pool=_pool(300, "test/abo", "real", None),
         genimage_pool=genimage,
     )
     return tmp_path

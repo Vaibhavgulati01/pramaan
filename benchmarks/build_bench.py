@@ -114,6 +114,15 @@ def _assign_source_images(
     Ring-forming claims (those whose `image_group_id` points at another
     claim) deliberately resolve to that claim's source image - that shared
     origin is precisely the signal P3's reuse graph must detect.
+
+    **Distinct image groups get distinct source images, sampled without
+    replacement.** This is a correctness requirement, not a nicety. An
+    earlier version sampled with replacement, so at dev scale 2,555 legit
+    claims drew from only 1,248 distinct ABO images and 775 source images
+    backed more than one "legit" claim. P3 then correctly flagged those as
+    reuse - 57% of the legit class - and the reuse graph was measuring a
+    sampling artifact rather than fraud. Every genuine duplicate in the
+    corpus must exist because the generator put it there.
     """
     source_by_group: dict[str, SourceImage] = {}
     assigned: dict[str, SourceImage] = {}
@@ -121,18 +130,43 @@ def _assign_source_images(
     # Non-ring claims first, so a ring member always finds its origin's
     # image already assigned regardless of row order.
     originals = claims[claims["image_group_id"] == claims["claim_id"]]
+
+    n_abo_needed = int((originals["fraud_class"] != "fraud_synthetic_image").sum())
+    if len(abo_pool) < n_abo_needed:
+        raise BenchBuildError(
+            f"ABO pool has {len(abo_pool)} images but {n_abo_needed} distinct image "
+            "groups need one each. Sampling with replacement would manufacture "
+            "duplicates that P3 would report as reuse - raise abo_pool_size."
+        )
+
+    abo_available = list(abo_pool)
+    rng.shuffle(abo_available)
+    abo_iter = iter(abo_available)
+
+    genimage_available = {
+        family: rng.sample(pool, len(pool)) for family, pool in genimage_by_family.items()
+    }
+    genimage_cursor: dict[str, int] = dict.fromkeys(genimage_available, 0)
+
     for _, row in originals.iterrows():
         if row["fraud_class"] == "fraud_synthetic_image":
             family = row["generator_family"]
-            pool = genimage_by_family.get(family, [])
+            pool = genimage_available.get(family, [])
             if not pool:
                 raise BenchBuildError(
                     f"no pooled images for generator family {family!r}; "
                     "increase min_per_generator or max_shards in fetch_genimage_pool"
                 )
-            source = pool[rng.randrange(len(pool))]
+            cursor = genimage_cursor[family]
+            if cursor >= len(pool):
+                raise BenchBuildError(
+                    f"generator family {family!r} has {len(pool)} pooled images but more "
+                    "claims need a distinct one each; raise min_per_generator."
+                )
+            source = pool[cursor]
+            genimage_cursor[family] = cursor + 1
         else:
-            source = abo_pool[rng.randrange(len(abo_pool))]
+            source = next(abo_iter)
         source_by_group[str(row["image_group_id"])] = source
         assigned[str(row["claim_id"])] = source
 
@@ -143,9 +177,14 @@ def _assign_source_images(
         group_id = str(row["image_group_id"])
         ring_source = source_by_group.get(group_id)
         if ring_source is None:
-            # Ring origin was dropped by reconciliation - fall back to a
-            # fresh image so the claim is still well-formed.
-            ring_source = abo_pool[rng.randrange(len(abo_pool))]
+            # Ring origin was dropped by reconciliation - give the orphan a
+            # fresh image so it stands alone rather than silently joining
+            # some unrelated group.
+            ring_source = next(abo_iter, None)
+            if ring_source is None:
+                raise BenchBuildError(
+                    "ABO pool exhausted while re-homing a ring orphan; raise abo_pool_size."
+                )
             source_by_group[group_id] = ring_source
         assigned[claim_id] = ring_source
 
@@ -192,16 +231,23 @@ def build_bench(
         raise BenchBuildError(report.describe())
     logger.info("split verification: %s", report.describe())
 
-    n_needed_abo = abo_pool_size or max(200, int(len(claims) * 0.5))
+    # Pools are sized from the number of DISTINCT image groups needing a
+    # source, because sources are drawn without replacement (see
+    # _assign_source_images). Sizing from claim count instead would
+    # silently under-provision and manufacture duplicate "legit" claims.
+    originals = claims[claims["image_group_id"] == claims["claim_id"]]
+    n_abo_groups = int((originals["fraud_class"] != "fraud_synthetic_image").sum())
+    # +10% headroom covers ring orphans re-homed by reconciliation.
+    n_needed_abo = abo_pool_size or max(50, int(n_abo_groups * 1.1) + 10)
+
     if min_per_generator is None:
-        # Size the synthetic pool from what this corpus actually consumes
-        # rather than a fixed constant: each GenImage row group is ~100MB
-        # over the wire, so over-fetching dominates smoke-tier build time.
-        # Headroom of 3x (min 10) keeps sampling varied without extra reads.
-        synth = claims[claims["fraud_class"] == "fraud_synthetic_image"]
+        # Each GenImage row group is ~100MB over the wire, so over-fetching
+        # dominates smoke-tier build time. Ask for what the corpus actually
+        # consumes per family, plus headroom for sampling variety.
+        synth = originals[originals["fraud_class"] == "fraud_synthetic_image"]
         per_family = synth["generator_family"].value_counts()
         peak = int(per_family.max()) if len(per_family) else 0
-        min_per_generator = max(10, peak * 3)
+        min_per_generator = max(10, int(peak * 1.5) + 5)
 
     if abo_pool is None or genimage_pool is None:
         logger.info(
