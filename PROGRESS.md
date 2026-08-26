@@ -131,8 +131,38 @@ Verified clean across 7 seeds at `dev` scale. Written up in
 - [x] `p4_behaviour.py` — claimant aggregates over the simulated ledger, keyed by **canonical identity** so a fresh account per claim doesn't read as N first-timers
 - [x] `p1_provenance.py` — C2PA with graceful `UNKNOWN` (400/400 real dev claims report UNKNOWN, as the WhatsApp reality demands)
 - [x] `SAFETY.md` written properly — every claim names the file or command that verifies it
-- [ ] `cascade/` — cost-ordered orchestration with early exit
-- [ ] Feature assembly: wire all four pillars + rings into one vector per claim
+- [x] `cascade/` — cost-ordered orchestration with early exit, and feature assembly (all four pillars + rings → one fixed-schema vector per claim)
+
+### Cascade: machinery verified, early exit inert until Phase 3
+
+Measured over the full 3,000-claim dev corpus:
+
+| | |
+|---|---|
+| Mean compute | **48.5 ms/claim** (median 46.8, p95 80.3) |
+| Stage-exit distribution | **0% / 0% / 100%** — nothing exits early |
+| Index completeness | 3000/3000 |
+| Rings detected | 110 |
+
+The 0% is honest, not a bug. The interim scorer is a hand-specified
+placeholder (a trained model doesn't exist until Phase 3); it anchors at
+0.5 and moves in bounded steps, so ordinary claims land mid-band and
+never clear the exit thresholds. **I deliberately did not narrow the band
+to manufacture exits** — early exit is only safe when the interim score
+is well-calibrated, which is precisely what Phase 3 supplies and Phase 5
+tunes against the cost model. So 48.5 ms/claim is the no-early-exit upper
+bound, and `0/0/100` is the number to report until then.
+
+Two design points the cascade had to get right, both silent when wrong:
+
+- **Early-exiting claims are still indexed.** Skipping the *use* of a
+  claim's reuse features must never skip *recording* it, or a fraudster
+  whose first submission exits early makes their own recycled follow-up
+  undetectable. Indexing uses pHash only (~12ms) and skips the CLIP
+  embedding (~90ms) — a stated trade, not a silent one. Guarded by a test
+  I verified fails when the bug is re-introduced.
+- **Skipped pillars leave `NaN`, not `0.0`.** A zero is a measurement;
+  LightGBM reads NaN as genuinely missing.
 
 ### P3 thresholds are measured against ground truth, and measuring overturned two guesses
 
