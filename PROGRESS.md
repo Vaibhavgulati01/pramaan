@@ -128,10 +128,11 @@ Verified clean across 7 seeds at `dev` scale. Written up in
 - [x] **The temporal-leak test** (`tests/test_pillars_p3_temporal.py`) — and verified it fails on a deliberately leaked index, rather than trusting a green run
 - [x] Ring detection (`rings.py`) — temporal bipartite `claimant ↔ image_cluster` graph with first-seen immunity; 116 rings found in the dev corpus
 - [x] `p2_forensics.py` — QT tables, thumbnail consistency, ELA, DCT, FFT (41.5 ms/claim, inside the ~40ms stage-2 budget)
-- [ ] `p4_behaviour.py` — claimant aggregates over the simulated ledger
-- [ ] `p1_provenance.py` — C2PA with graceful `UNKNOWN`
+- [x] `p4_behaviour.py` — claimant aggregates over the simulated ledger, keyed by **canonical identity** so a fresh account per claim doesn't read as N first-timers
+- [x] `p1_provenance.py` — C2PA with graceful `UNKNOWN` (400/400 real dev claims report UNKNOWN, as the WhatsApp reality demands)
+- [x] `SAFETY.md` written properly — every claim names the file or command that verifies it
 - [ ] `cascade/` — cost-ordered orchestration with early exit
-- [ ] `SAFETY.md` written properly (pillars now exist to point at)
+- [ ] Feature assembly: wire all four pillars + rings into one vector per claim
 
 ### P3 thresholds are measured against ground truth, and measuring overturned two guesses
 
