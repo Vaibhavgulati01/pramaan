@@ -19,7 +19,7 @@ portable to that VM unmodified.
 | 0 — Scaffold + push | ✅ done | Repo tree, Typer CLI, GH Actions CI, Docker, docs skeletons |
 | 0.5 — Power analysis | ✅ done | `risk/hb_pvalue.py`, `risk/power_analysis.py`; sized `full`=35,000 claims (α=0.03/δ=0.10 conservative), `dev`=3,000 |
 | 1 — Foundations | 🚧 in progress | Canonicalisation, leakage audit, benchmark builder, simulated ledger, splits |
-| 2 — Pillars (P3→P2→P4→P1) | ⬜ not started | |
+| 2 — Pillars (P3→P2→P4→P1) | 🚧 in progress | P3 (reuse graph) done incl. the mandatory temporal-leak test; P2/P4/P1 next |
 | 3 — Fusion & calibration | ⬜ not started | |
 | 4 — Risk control | ⬜ not started | `certified_set.py`/`ltt.py` on top of Phase 0.5's `hb_pvalue.py` |
 | 5 — Policy & OPE | ⬜ not started | Ends with `PREREGISTRATION.md` + `EVALUATION_PROTOCOL.md` committed |
@@ -121,8 +121,37 @@ Two fixes, and the second is the important one:
 Verified clean across 7 seeds at `dev` scale. Written up in
 `docs/LIMITATIONS.md` and `docs/DATA_CARD.md` rather than quietly fixed.
 
-## Next up after Phase 1
+## Phase 2 checklist (current)
 
-Phase 2 (pillars), P3 (reuse graph) first per the plan — pHash + LSH
-banding, CLIP+FAISS with a strictly time-ordered index, and the
-temporal-leak unit test the spec calls out as a must-have.
+- [x] `src/pramaan/pillars/p3_reuse.py` — pHash + LSH banding, CLIP semantic stage, strictly time-ordered index
+- [x] `src/pramaan/pillars/clip_embed.py` — CLIP ViT-B/32 embeddings (quickgelu variant, matching the OpenAI weights)
+- [x] **The temporal-leak test** (`tests/test_pillars_p3_temporal.py`) — and verified it fails on a deliberately leaked index, rather than trusting a green run
+- [ ] Ring detection — temporal bipartite `claimant ↔ image_cluster` graph, claim- and ring-level outputs
+- [ ] `p2_forensics.py` — QT tables, thumbnail consistency, ELA, DCT, FFT
+- [ ] `p4_behaviour.py` — claimant aggregates over the simulated ledger
+- [ ] `p1_provenance.py` — C2PA with graceful `UNKNOWN`
+- [ ] `cascade/` — cost-ordered orchestration with early exit
+- [ ] `SAFETY.md` written properly (pillars now exist to point at)
+
+### P3 thresholds are measured, not guessed
+
+| | pHash (Hamming) | CLIP (cosine) |
+|---|---|---|
+| Chosen | **6** | **0.92** |
+| Catches | exact / near-exact reuse | crop + rotate + recolour |
+| At the chosen value | 0 FPs in 20,000 unrelated pairs | 73.3% recall, 0 FPs in 3,540 unrelated pairs |
+| Why not looser | threshold 10 flagged **19.1% of the legit class** — per-pair FP of 0.03% compounds across ~1,500 priors per claim | 0.90 gives 90% recall but 0.06%/pair, which compounds badly |
+
+The two stages are complementary by construction: crop/rotate reuse has a
+median pHash distance of 15 and is unreachable at any useful precision,
+which is exactly why the spec's design has a semantic second stage.
+
+### Vector backend: NumPy by default, FAISS opt-in
+
+`IndexFlatIP` is a brute-force matmul, so NumPy is algorithmically
+identical (verified: same top-k, 2.4e-07 max difference, same speed) —
+but `faiss-cpu` and `torch` each bundle an OpenMP runtime and abort on
+import together on Windows (`OMP: Error #15`), and the documented
+workaround is one its own authors say may "silently produce incorrect
+results". FAISS stays opt-in for `full` scale on Linux, where HNSW
+actually matters. A test asserts both backends agree.
