@@ -261,6 +261,30 @@ def train(
     _run_train(scale.value, use_clip=clip)
 
 
+def _run_certify(tier: str, use_clip: bool) -> None:
+    import logging
+
+    from pramaan.risk.certify_pipeline import certify, summarise
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    certificate = certify(tier, _repo_root(), use_clip=use_clip)
+    typer.echo("")
+    typer.echo(summarise(certificate))
+
+
+@app.command()
+def certify(
+    scale: Scale = typer.Option(Scale.dev, help="Which corpus tier to certify."),
+    clip: bool = typer.Option(True, help="Use CLIP embeddings in the reuse pillar."),
+) -> None:
+    """Run Learn-then-Test on the calibration split and seal it.
+
+    This is the ONLY place the calibration split is consumed. See
+    docs/GUARANTEE.md for the three caveats that qualify the result.
+    """
+    _run_certify(scale.value, use_clip=clip)
+
+
 @app.command()
 def eval(  # noqa: A001 - matches the spec's `make eval`
     scale: Scale = typer.Option(Scale.dev, help="smoke, dev, or full."),

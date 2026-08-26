@@ -21,7 +21,7 @@ portable to that VM unmodified.
 | 1 — Foundations | ✅ done | Canonicalisation, leakage audit, benchmark builder, simulated ledger, verified splits |
 | 2 — Pillars (P3→P2→P4→P1) | ✅ done | All four pillars + rings + cost-ordered cascade; temporal-leak test verified against an injected bug |
 | 3 — Fusion & calibration | ✅ done | LightGBM + monotone constraints, Mondrian isotonic, reliability diagrams |
-| 4 — Risk control | 🚧 in progress | `certified_set.py` (LTT, fixed-sequence, power floor) done; GUARANTEE.md next |
+| 4 — Risk control | ✅ done | LTT + certified sets, calibration seal, GUARANTEE.md with all three caveats |
 | 5 — Policy & OPE | ⬜ not started | Ends with `PREREGISTRATION.md` + `EVALUATION_PROTOCOL.md` committed |
 | 6 — Evaluation infra (smoke+dev) | ⬜ not started | |
 | 7 — Audit, federation, monitoring | ⬜ not started | Federation is kill-gated (2 attempts, concrete criteria) |
@@ -341,3 +341,49 @@ floor from `min_n_for_rhat` at a pre-committed planning rate — the same
 Phase 0.5 analysis that sized the corpus. This is legitimate because
 `n_denied` depends only on predicted probabilities, never on labels, so
 filtering the grid by it uses no information about the risk being tested.
+
+
+## Phase 4 result: the certificate correctly refused to exist
+
+`docs/GUARANTEE.md` was written **before** any certified α was computed —
+visible in the git history, and the point: caveats written after seeing a
+pleasing number are marketing.
+
+Then `pramaan certify --scale dev` walked the whole pre-committed ladder
+and **certified nothing at any rung** (α=0.03, 0.05, 0.10 at δ=0.10, and
+0.10 at δ=0.20). That is the correct answer, not a defect.
+
+The dev calibration split (n=580) looks like this:
+
+| threshold | denied | realised FDR |
+|---|---|---|
+| 0.90 | 18 | **0.000** |
+| 0.80 | 24 | 0.167 |
+| 0.50 | 34 | 0.382 |
+
+The model has a genuinely clean high-confidence region — zero false
+denials at t=0.90 — but only 18 claims reach it, far below every power
+floor (45–222). Loosening the threshold buys denials at rapidly worse
+FDR. **Certification is blocked by sample size, not model quality**,
+which is exactly the distinction `certified_set.py`'s power floor exists
+to draw, and exactly what Phase 0.5 predicted would happen at dev scale.
+
+### One planning assumption now needs revising, flagged before the full run
+
+Phase 0.5 sized the corpus assuming `deny_rate = 0.075` (half of
+prevalence). The **observed** rate in the high-confidence region is
+`18/580 = 3.1%` — about **2.4× lower**. Projected onto `full` (~7,000
+calibration claims) that gives ~217 denials at t≈0.90, which clears
+α=0.03's zero-error floor of 76 but not its 0.3α floor of 222.
+
+So α=0.03 at full scale is reachable if the near-zero FDR holds and
+marginal if it does not. Genuinely open — and flagged now rather than
+discovered at Phase 9.
+
+### Calibration-split single-use is enforced, not asserted
+
+- `FusionModel.fit` raises `SplitDisciplineError` on calibration/test rows.
+- The split's content hash is committed (`reports/dev/calibration_seal.json`)
+  and re-checked in CI; `write_seal` refuses to overwrite a changed seal.
+- Verified end-to-end: an unchanged split passes, a single flipped label
+  is rejected, and a seal copied between tiers is caught.

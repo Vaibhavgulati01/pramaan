@@ -1,33 +1,117 @@
 # The guarantee
 
-> **Status: partial.** Phase 0.5 (power analysis / sizing) is done and
-> real — see below. Illustrative `DEV`-scale numbers land in Phase 4. The
-> one real, `full`-scale certified statement lands in Phase 9, after the
-> VM run, resolved via the α/δ decision ladder in
-> `docs/PREREGISTRATION.md`.
+> **Status.** The machinery, the caveats, and the power analysis are
+> real and complete. The one *reportable* certified statement is
+> deliberately absent: it comes from the `full`-scale run on the VM
+> (Phase 9), resolved through the pre-committed α/δ ladder in
+> [`PREREGISTRATION.md`](PREREGISTRATION.md). `DEV`-scale figures below
+> are mechanism validation and are labelled as such throughout.
+>
+> **This document's caveats were written before any certified α was
+> computed anywhere in the repository.** That ordering is visible in the
+> git history, and it is the point: caveats written after seeing a
+> pleasing number are marketing.
 
-## What will go here (Phases 4, 9)
+## What is being claimed
 
-1. **Plain-English statement**, then the formal one: control of the
-   false-denial rate among auto-denied claims via Learn-then-Test
-   (Hoeffding-Bentkus p-values, fixed-sequence testing over a monotone
-   threshold grid).
-2. **Three honesty caveats**, stated before any certified α is reported
-   anywhere else in the repo:
-   - The selective-risk ratio caveat (conditional `FDR_deny` vs. the
-     clean unconditional `E[(1-y)*1{deny}] <= alpha'` variant — both
-     reported).
-   - The exchangeability assumption, and the pointer to §6's shift matrix
-     for exactly how badly it breaks under generator shift.
-   - Calibration-set single-use, enforced by a recorded file hash + CI
-     assertion that it never changes.
-4. **The α/δ decision ladder** actually walked at `full` scale, and which
-   rung certified (or the honest "nothing certified at n=X, here is the
-   required n" result if none did).
-3. **The α/δ decision ladder** actually walked at `full` scale, and which
-   rung certified (or the honest "nothing certified at n=X, here is the
-   required n" result if none did).
-4. Reliability diagrams, global and per-`{category x price-band}` group.
+**In plain English:** among the claims PRAMAAN auto-denies, the fraction
+that were actually legitimate is bounded — and the bound comes with a
+confidence level rather than a hope.
+
+**Formally:** for a denial threshold `t`, with `FDR_deny(t) = P(y = 0 |
+p̂ ≥ t)`,
+
+```
+P( FDR_deny(t) ≤ α )  ≥  1 − δ
+```
+
+obtained by Learn-then-Test: a Hoeffding–Bentkus p-value for the null
+`H₀: FDR_deny > α` at each threshold, evaluated in a fixed sequence from
+the most conservative threshold downward, stopping at the first failure.
+Fixed-sequence testing is what controls the family-wise error rate
+without a multiplicity correction — each test is only performed if every
+prior one passed.
+
+The output is a *set* of certified thresholds, not a single number.
+Phase 5 selects the cost-minimising member of that set
+(`configs/costs.yaml`), which is a policy decision made separately from
+the statistical one.
+
+Implementation: [`src/pramaan/risk/certified_set.py`](../src/pramaan/risk/certified_set.py),
+on the Hoeffding–Bentkus primitive in
+[`hb_pvalue.py`](../src/pramaan/risk/hb_pvalue.py).
+
+---
+
+## The three caveats
+
+### 1. The selective-risk ratio caveat
+
+`FDR_deny` is a ratio of two random quantities. Both the numerator
+(legitimate claims denied) and the denominator (claims denied at all)
+depend on which claims happened to fall above the threshold. The clean
+Learn-then-Test guarantee is stated for a **bounded loss with a fixed
+denominator**, and that is not what a conditional rate is.
+
+What we actually do: condition on the realised denial set and treat
+`n_denied` as given. That is an approximation, and it is the one place
+where the guarantee is weaker than the notation suggests.
+
+So the **unconditional** form is reported alongside it for every
+threshold:
+
+```
+E[ (1 − y) · 1{deny} ]  ≤  α′
+```
+
+This has a fixed denominator — every claim — and is covered by the clean
+guarantee with no caveat at all. It is the more defensible statement and
+the less useful one: a merchant asks "of the claims we denied, how many
+were honest?", not "what fraction of all claims were wrongly denied?".
+
+Both appear in every `ThresholdResult`. The README quotes the conditional
+form because it is operationally meaningful, and links here.
+
+### 2. Exchangeability — and it does not hold
+
+Learn-then-Test requires calibration and deployment data to be
+exchangeable. **In this domain they are not, and the attacker is the
+reason.** A fraudster upgrading their image generator deliberately
+changes the distribution the certificate was computed on. This is not an
+edge case; it is the expected trajectory of the threat.
+
+Three of the four pillars are built generator-agnostic precisely so the
+guarantee has a chance of surviving that shift — the reuse graph in
+particular does not care how an image was produced. But "has a chance"
+is not "does", so §6's shift matrix **measures** where the certificate
+still holds and where it stops, and publishes the cells where it fails.
+
+A guarantee whose failure conditions are unmeasured is not a guarantee.
+
+### 3. Calibration-split single-use
+
+The calibration split is used **once**, for Learn-then-Test, and never
+for model selection, hyperparameter choice, or threshold tuning. Two
+mechanisms enforce this rather than asking anyone to remember:
+
+- `FusionModel.fit` **raises `SplitDisciplineError`** if handed rows from
+  the calibration or test split. Isotonic calibration, which also needs
+  held-out data, is instead fitted on K-fold *out-of-fold* predictions
+  from the train split — see
+  [`fusion/model.py`](../src/pramaan/fusion/model.py).
+- The calibration split's content hash is recorded when LTT first
+  consumes it, and CI asserts it has not changed since
+  (`scripts/check_calibration_seal.py`, `.github/workflows/`).
+
+---
+
+## What Phase 9 adds
+
+The α/δ ladder actually walked at `full` scale, which rung certified,
+**and every rung that failed** — reporting only the one that worked would
+misrepresent how hard the guarantee was to obtain. If nothing certifies,
+that is published as the result, together with the denial-set size that
+would have been required.
 
 ## The power curve (Phase 0.5 — done)
 
@@ -76,7 +160,64 @@ rather than conservative.
 Regenerate this analysis at any time with `python
 scripts/run_power_analysis.py`.
 
-## DEV-scale numbers (mechanism validation only)
+## DEV-scale run: nothing certified, and that is the correct answer
 
-*(Phase 4 fills this in. Explicitly labelled `DEV — not a held-out
-result`; never a substitute for the `full`-scale statement above.)*
+> `DEV — mechanism validation only, not a held-out result.`
+
+Running `pramaan certify --scale dev` walks the full pre-committed ladder
+and **certifies nothing at any rung**:
+
+| α | δ | outcome |
+|---|---|---|
+| 0.03 | 0.10 | failed — no threshold reached the 222-denial floor |
+| 0.05 | 0.10 | failed — no threshold reached the 131-denial floor |
+| 0.10 | 0.10 | failed — no threshold reached the 64-denial floor |
+| 0.10 | 0.20 | failed — no threshold reached the 45-denial floor |
+
+This is not a defect. It is the power analysis from Phase 0.5 coming true
+on real data, and the mechanism refusing to issue a certificate it cannot
+support. The calibrated scores on the 580-claim dev calibration split
+look like this:
+
+| threshold | claims denied | realised FDR |
+|---|---|---|
+| 0.90 | 18 | **0.000** |
+| 0.80 | 24 | 0.167 |
+| 0.60 | 28 | 0.250 |
+| 0.50 | 34 | 0.382 |
+| 0.30 | 82 | 0.598 |
+
+The model *does* have a clean high-confidence region — zero false denials
+at t=0.90 — but only 18 claims reach it, well short of every floor.
+Loosening the threshold does not help: it buys denials at rapidly worse
+FDR. Certification is blocked by **sample size, not by model quality**,
+which is precisely the distinction the power floor in
+`certified_set.py` exists to make.
+
+**Why this is the outcome the repo wanted from `dev`.** A system that
+produced a confident-looking α here would be producing it from 18
+observations. `dev` exists to prove the mechanism runs; the reportable
+certificate comes from `full` (see
+[`EVALUATION_PROTOCOL.md`](EVALUATION_PROTOCOL.md)).
+
+### Forward projection to `full` — and one assumption that needs revising
+
+The dev run gives the first real measurement of a quantity Phase 0.5 had
+to assume. Sizing used `assumed_deny_rate = 0.075` (half of the 15% fraud
+prevalence). The **observed** deny rate in the high-confidence region is
+`18/580 = 3.1%` — roughly **2.4× lower than assumed**.
+
+Projecting the observed behaviour onto the 35,000-claim `full` corpus
+(20% calibration ⇒ ~7,000 calibration claims):
+
+- expected denials at t≈0.90: `7,000 × 3.1% ≈ 217`
+- α=0.03 at δ=0.10 needs **76** denials if the realised FDR stays near
+  zero, or **222** if it sits at `0.3α`
+
+So α=0.03 is reachable at `full` scale if the near-zero FDR holds, and
+marginal if it does not. That is a genuine open question rather than a
+formality, and it is exactly why the ladder is pre-committed: if 0.03
+fails, 0.05 is attempted and **both outcomes are published**.
+
+We are flagging the optimistic deny-rate assumption now, before the
+`full` run, rather than discovering it afterwards.

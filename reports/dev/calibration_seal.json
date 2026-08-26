@@ -1,0 +1,8 @@
+{
+  "tier": "dev",
+  "n_claims": 580,
+  "n_fraud": 85,
+  "content_sha256": "adf9e8c6945cdf153e9fddce1a544c4668e85a2aaf0965b1e33d3c7cbdc68219",
+  "sealed_at": "2026-08-26T14:59:22+00:00",
+  "note": "Hash of the calibration split's claim ids, labels and image SHAs. If this changes, the split was rebuilt or reused and any certificate computed against the earlier version no longer applies."
+}

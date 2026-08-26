@@ -65,3 +65,13 @@ jobs:
 
       - name: Entity-leakage audit unit tests
         run: pytest tests/test_entity_leakage_audit.py tests/test_benchmarks_splits.py -v
+
+      # docs/GUARANTEE.md caveat 3: the calibration split is used once,
+      # for Learn-then-Test, and never for model selection. The seal is a
+      # committed file, so a silently regenerated split shows up as a diff
+      # here rather than as a quietly invalid certificate.
+      - name: Calibration-split seal
+        run: python scripts/check_calibration_seal.py
+
+      - name: Calibration seal unit tests
+        run: pytest tests/test_risk_calibration_seal.py -q
