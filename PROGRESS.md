@@ -67,9 +67,32 @@ portable to that VM unmodified.
 - [x] `benchmarks/splits.py` — `verify_splits()` (all 4 constraints) + `reconcile_splits()` (structural enforcement); see the design note below
 - [x] `benchmarks/build_bench.py` — orchestrates ledger+sources+transforms into a corpus, manifest with per-claim provenance/licence/source-SHA256/output-SHA256
 - [x] `pramaan data --scale {smoke,dev}` and `pramaan data-full` wired to `build_bench.py`
-- [ ] Run the real `smoke` and `dev` builds end-to-end and confirm split verification is green on actual output
-- [ ] `benchmarks/loaders.py` — a `datasets`-compatible loader over the built corpus (deferred to Phase 2, where the pillars are its first consumer)
-- [ ] **Gate**: leakage audits green before any Phase 2 model code
+- [x] `benchmarks/loaders.py` — timestamp-ordered corpus reader, so the temporally-correct iteration order is the default one
+- [x] Real `smoke` build end-to-end (200 claims, 3m27s cold / 7s warm), split verification green on actual output
+- [ ] Real `dev` build (3,000 claims) — running
+- [x] **Gate**: leakage audits green — enforced in CI by `.github/workflows/leakage.yml` (5 seeds, network-free) and by `verify_splits()` hard-failing the build
+
+### Three real bugs Phase 1 surfaced
+
+Recording these because each was invisible until something concrete ran,
+and each would have quietly corrupted downstream numbers:
+
+1. **Fuzzy address matching merged different households** (caught by
+   `verify_splits`) — fixed with a numeric-token rule, plus structural
+   reconciliation for the irreducibly ambiguous residue. See below.
+2. **Image size predicted the label** (caught by the first real corpus
+   build) — only the legit class was being resized, leaving synthetic
+   fraud at 512px against ~256px elsewhere. Fixed by splitting
+   construction into fraud-transform + class-independent transport.
+   Guarded by `test_image_dimensions_carry_no_label_signal`.
+3. **`pramaan all` passed Typer sentinels as argument values** (caught by
+   CI) — invisible locally because `data` was only ever invoked through
+   the CLI, and invisible before Phase 1 because downstream commands
+   ignored their arguments.
+
+Also: the spec's SD 1.4 generator family does not exist in the public
+mirror (it declares the label but carries no rows). Substituted SD 1.5
+and declared it in `docs/DATA_CARD.md` / `docs/LIMITATIONS.md`.
 
 ### Design note: the 4-way splits, and a real bug this caught
 

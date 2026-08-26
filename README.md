@@ -3,6 +3,7 @@
 **Risk-controlled selective adjudication of refund-claim evidence.**
 
 [![CI](https://github.com/Vaibhavgulati01/pramaan/actions/workflows/ci.yml/badge.svg)](https://github.com/Vaibhavgulati01/pramaan/actions/workflows/ci.yml)
+[![Leakage audits](https://github.com/Vaibhavgulati01/pramaan/actions/workflows/leakage.yml/badge.svg)](https://github.com/Vaibhavgulati01/pramaan/actions/workflows/leakage.yml)
 
 > Every refund desk runs on one assumption: a photograph is proof.
 > That assumption broke in 2026.
@@ -15,9 +16,10 @@ decision rather than chosen by hand.
 
 ---
 
-**Status: under active build (Phase 0 of 9 — see the implementation
-plan referenced below).** This README is a living document, generated in
-its final numeric form by `scripts/inject_metrics.py` from
+**Status: under active build — Phase 1 of 9 complete** (ingest,
+canonicalisation, benchmark builder, leakage audits; see
+[`PROGRESS.md`](PROGRESS.md)). This README is a living document,
+generated in its final numeric form by `scripts/inject_metrics.py` from
 `reports/{tier}/metrics.json`. Nothing here is hand-typed once Phase 6
 lands. Every number in this repo is scale-labeled per
 [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md):
