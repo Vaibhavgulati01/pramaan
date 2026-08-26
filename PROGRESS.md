@@ -20,8 +20,8 @@ portable to that VM unmodified.
 | 0.5 — Power analysis | ✅ done | `risk/hb_pvalue.py`, `risk/power_analysis.py`; sized `full`=35,000 claims (α=0.03/δ=0.10 conservative), `dev`=3,000 |
 | 1 — Foundations | ✅ done | Canonicalisation, leakage audit, benchmark builder, simulated ledger, verified splits |
 | 2 — Pillars (P3→P2→P4→P1) | ✅ done | All four pillars + rings + cost-ordered cascade; temporal-leak test verified against an injected bug |
-| 3 — Fusion & calibration | 🚧 in progress | LightGBM + monotone constraints + Mondrian isotonic done; reliability diagrams next |
-| 4 — Risk control | ⬜ not started | `certified_set.py`/`ltt.py` on top of Phase 0.5's `hb_pvalue.py` |
+| 3 — Fusion & calibration | ✅ done | LightGBM + monotone constraints, Mondrian isotonic, reliability diagrams |
+| 4 — Risk control | 🚧 in progress | `certified_set.py` (LTT, fixed-sequence, power floor) done; GUARANTEE.md next |
 | 5 — Policy & OPE | ⬜ not started | Ends with `PREREGISTRATION.md` + `EVALUATION_PROTOCOL.md` committed |
 | 6 — Evaluation infra (smoke+dev) | ⬜ not started | |
 | 7 — Audit, federation, monitoring | ⬜ not started | Federation is kill-gated (2 attempts, concrete criteria) |
@@ -285,3 +285,59 @@ Calibration also does real work: out-of-fold Brier improves 0.1066 →
    This one is worth dwelling on: the corpus passed every leakage audit,
    every split constraint, and every unit test. It was only inspecting
    *which features the fitted model leaned on* that exposed it.
+
+
+## Phase 3 result: the ablation that changed what we can claim
+
+Retraining on the decorrelated corpus **did not** move forensics gain
+(72.6% -> 70.9%). I had predicted it would drop; it did not, and chasing
+that down produced the most important finding in the project so far.
+
+Three measurements, each contradicting the previous:
+
+1. **Gain says forensics dominates** — `forensics 70.9% / reuse 19.2%`.
+2. **Effect sizes say forensics has no label signal** — `d(fraud vs
+   legit)` is −0.01 to 0.16, while `d(GenImage vs ABO)` reaches 1.83.
+   These are dataset detectors.
+3. **The ablation reconciles them, and quantifies the confound:**
+
+   | ablation | full corpus | ABO-only (source constant) |
+   |---|---|---|
+   | − forensics | **−0.1024** PR-AUC | **−0.0335** |
+   | − reuse | −0.0220 | −0.0273 |
+
+   With source held constant the pillars contribute *comparably*.
+   Roughly two-thirds of forensics' apparent lead is it detecting
+   GenImage, which carries **2.58×** the fraud rate of ABO.
+
+**The residual confound is structurally irreducible.** Writing `q` for
+the GenImage share among non-synthetic claims,
+`P(GenImage|fraud) = (144 + 301q)/445` and `P(GenImage|legit) = q` are
+equal only at `q = 1` — i.e. only by abandoning ABO entirely. Any corpus
+sourcing AI fraud from one dataset and real photos partly from another
+inherits this.
+
+**Consequences, now written into `docs/LIMITATIONS.md`:**
+
+- Gain-based importance is a diagnostic here, **not** evidence of
+  predictive contribution. A feature that partitions subpopulations helps
+  tree structure without predicting the label. This is exactly why §6
+  mandates ablations over importance scores — we hit the reason directly.
+- The headline ablation is an **upper bound** on the pixel pillars.
+  Phase 6 will report full, ABO-only, and generator-holdout variants
+  rather than one number.
+
+## Phase 4 note: a power failure that would have silenced the certificate
+
+Fixed-sequence LTT tests thresholds most-conservative-first, but those
+deny the fewest claims and so have the *least* power. Observed: a good
+model failed at t=0.99 on 60 denials at 3.3% empirical FDR — comfortably
+below alpha=0.10 — because 60 observations cannot establish it. The naive
+sequence stops there and certifies nothing, despite thresholds further
+down denying 600 claims at 1.2%.
+
+Fixed by treating insufficient power as a *skip*, not a failure, with the
+floor from `min_n_for_rhat` at a pre-committed planning rate — the same
+Phase 0.5 analysis that sized the corpus. This is legitimate because
+`n_denied` depends only on predicted probabilities, never on labels, so
+filtering the grid by it uses no information about the risk being tested.

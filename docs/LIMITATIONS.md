@@ -75,24 +75,56 @@ not present).** We have deliberately not tuned the transform to make our
 own detector look better — the honest reading is that results on this
 class say little either way.
 
-**The forensics pillar dominates the fitted model, and that is a warning
-sign rather than a result.** Training on the dev corpus, gain splits
-roughly `forensics 64% / reuse 28% / behaviour 8% / provenance ~0% /
-ring ~0%` — the *opposite* of what §6 predicts (reuse load-bearing, the
-pixel-adjacent signals nearly disposable). Two of the top forensics
-features look actively suspect on inspection: `fft_peak_ratio` draws 14%
-of gain although synthetic-fraud images score *lower* on it than legit
-ones (0.66×), and `blockiness` draws 14.5% at a class separation of only
-1.06×. A model leaning that hard on features with so little class
-separation is fitting structure we have not explained.
+**Roughly two-thirds of the forensics pillar's apparent contribution is
+an artifact of which dataset an image came from.** This is quantified,
+not suspected, and it qualifies the repository's central ablation claim.
 
-The most likely explanation is the encoding-artifact concern immediately
-below: GenImage and ABO images carry different compression histories, and
-the forensics pillar may be reading the *source dataset* rather than
-anything about fraud. The generator-holdout split and the recompression
-rows of the shift matrix (Phase 6) are the tests that decide it. **Until
-they run, no claim about pillar importance in this repository should be
-taken at face value**, including the spec's own predicted finding.
+Three measurements, in the order they were made:
+
+1. *Gain-based importance says forensics dominates.* `forensics 70.9% /
+   reuse 19.2% / behaviour 9.8%` — the opposite of §6's prediction.
+2. *Effect sizes say forensics has almost no label signal.* Standardised
+   mean differences on the dev corpus:
+
+   | feature | d(fraud vs legit) | d(GenImage vs ABO) |
+   |---|---|---|
+   | `dct_high_freq_ratio` | −0.01 | **1.61** |
+   | `ela_mean` | 0.10 | **1.29** |
+   | `fft_peak_ratio` | −0.03 | **−1.19** |
+
+   These are dataset detectors, not fraud detectors.
+3. *The ablation reconciles the two, and shows how much is confounded.*
+
+   | ablation | full corpus | ABO-only (source held constant) |
+   |---|---|---|
+   | − forensics | **−0.1024** PR-AUC | **−0.0335** |
+   | − reuse | −0.0220 | −0.0273 |
+
+   With source held constant the two pillars contribute *comparably*.
+   Forensics' 3× apparent lead on the full corpus is mostly it acting as
+   a GenImage detector — and GenImage claims carry **2.58×** the fraud
+   rate of ABO ones (24.8% vs 9.6%).
+
+**The residual confound is structurally irreducible, not an oversight.**
+Mixing the real-photo pool (see above) cut the association but cannot
+remove it. Writing `q` for the GenImage share among non-synthetic claims,
+`P(GenImage | fraud) = (144 + 301q)/445` while
+`P(GenImage | legit) = q`; these are equal only at `q = 1`, i.e. only if
+ABO is abandoned entirely. Any corpus that sources AI-generated fraud
+from one dataset and real photographs partly from another inherits this.
+
+**What follows for how this repo's numbers should be read:**
+
+- **Gain-based feature importance is not evidence of predictive
+  contribution here** and is reported only as a diagnostic. A feature
+  that cleanly partitions subpopulations is useful for tree structure
+  without predicting the label. This is precisely why §6 mandates
+  ablations rather than importance scores, and we ran into the reason
+  first-hand.
+- The headline ablation must be read as an **upper bound** on the pixel
+  pillars, with the source-controlled variant reported beside it.
+- Phase 6 will report both the full and ABO-only ablations, plus the
+  generator-holdout result, rather than a single number.
 
 **A feature that measured the corpus rather than the claim reached the
 model.** `reuse_n_candidates_examined` counted how many prior claims the

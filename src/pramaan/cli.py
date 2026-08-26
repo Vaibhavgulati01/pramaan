@@ -229,6 +229,28 @@ def _run_train(tier: str, use_clip: bool) -> None:
         for name, metrics in report.worst_groups(3):
             typer.echo(f"      {name:28s} ECE {metrics.ece:.4f} (n={metrics.n})")
 
+    from pramaan.fusion.plots import plot_reliability
+
+    written = plot_reliability(
+        report, root / "reports" / tier, tier, label="train out-of-fold"
+    )
+    typer.echo("")
+    for path in written:
+        typer.echo(f"  wrote {path.relative_to(root)}")
+
+    # Pillar-level gain, which is what makes a misbehaving pillar visible.
+    # Inspecting exactly this is what exposed the source/label confound
+    # that made Sec.6's central ablation untestable (docs/LIMITATIONS.md).
+    importance = model.feature_importance()
+    total = sum(importance.values()) or 1.0
+    by_pillar: dict[str, float] = {}
+    for name, gain in importance.items():
+        by_pillar[name.split("_")[0]] = by_pillar.get(name.split("_")[0], 0.0) + gain
+    typer.echo("")
+    typer.echo("  Gain by pillar (diagnostic - not the Phase 6 ablation):")
+    for pillar, gain in sorted(by_pillar.items(), key=lambda kv: -kv[1]):
+        typer.echo(f"    {pillar:12s} {gain / total:6.1%}")
+
 
 @app.command()
 def train(
