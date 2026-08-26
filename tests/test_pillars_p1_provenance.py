@@ -63,10 +63,22 @@ def test_reports_when_the_library_is_unavailable(monkeypatch) -> None:
     assert not f.library_available
 
 
-def test_library_is_available_in_this_environment() -> None:
-    # Guards against the optional dependency silently disappearing and
-    # every provenance result quietly degrading to UNKNOWN.
-    assert c2pa_available()
+@pytest.mark.skipif(not c2pa_available(), reason="pramaan[provenance] not installed")
+def test_real_c2pa_reader_reports_unknown_for_a_plain_jpeg() -> None:
+    """Exercises the actual native c2pa path rather than the fallback.
+
+    Skipped rather than failed when the optional extra is absent, because
+    running without it is a supported deployment state - but CI installs
+    `[provenance]` precisely so this does run there. It guards a bug that
+    already happened once: c2pa.Reader takes a stream, not raw bytes, and
+    passing bytes raised an AttributeError that an error handler
+    classifying by message text reported as INVALID for every ordinary
+    image.
+    """
+    f = extract_provenance(_plain_jpeg())
+    assert f.library_available
+    assert f.status is ProvenanceStatus.UNKNOWN
+    assert f.validation_error is None
 
 
 # --- manifest classification -----------------------------------------
