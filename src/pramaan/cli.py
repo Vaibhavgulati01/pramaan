@@ -11,8 +11,15 @@ from __future__ import annotations
 import importlib
 import sys
 from enum import Enum
+from pathlib import Path
 
 import typer
+
+
+def _repo_root() -> Path:
+    """Repo root, resolved from this file rather than the cwd so the CLI
+    works when invoked from anywhere (CI, the VM, a subdirectory)."""
+    return Path(__file__).resolve().parents[2]
 
 app = typer.Typer(
     name="pramaan",
@@ -99,18 +106,64 @@ def setup() -> None:
         raise typer.Exit(code=1)
 
 
+def _build_corpus(tier: str, seed: int) -> None:
+    """Shared by `data` and `data-full` - the only difference between them
+    is which tier's sizing (configs/data.yaml, set by the Phase 0.5 power
+    analysis) is used, and that `full` is expected to run on the VM."""
+    import logging
+
+    import yaml
+
+    from benchmarks.build_bench import build_bench, summarize
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    config_path = _repo_root() / "configs" / "data.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    tier_config = config[tier]
+
+    n_claims = tier_config["n_claims"]
+    if n_claims is None:
+        typer.echo(
+            f"configs/data.yaml has no n_claims for tier {tier!r}. "
+            "Run `python scripts/run_power_analysis.py` to size it.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    merchants = [f"merchant_{i}" for i in range(tier_config["merchants"])]
+    manifest = build_bench(
+        n_claims=n_claims,
+        merchants=merchants,
+        seed=seed,
+        tier=tier,
+        # Anchored to the repo, not the cwd, so `pramaan data` writes to
+        # the same place regardless of where it's invoked from.
+        output_root=_repo_root() / "data",
+        composition=config.get("composition"),
+    )
+    typer.echo("")
+    typer.echo(summarize(manifest))
+
+
 @app.command()
 def data(
     scale: Scale = typer.Option(Scale.dev, help="smoke (CI) or dev (local mechanism-scale)."),
+    seed: int = typer.Option(1337, help="Corpus build seed; recorded in the manifest."),
 ) -> None:
-    """Build PRAMAAN-Bench-v1 at the given non-full scale. Lands in Phase 1."""
-    _pending(f"data --scale {scale.value}", "Phase 1")
+    """Build PRAMAAN-Bench-v1 at the given non-full scale."""
+    if scale is Scale.full:
+        typer.echo("Use `pramaan data-full` for the full-scale corpus.", err=True)
+        raise typer.Exit(code=1)
+    _build_corpus(scale.value, seed)
 
 
 @app.command(name="data-full")
-def data_full() -> None:
-    """Build the full-scale (VM) corpus, sized by the Phase 0.5 power analysis. Lands in Phase 1."""
-    _pending("data-full", "Phase 1 (documented; run on the VM)")
+def data_full(
+    seed: int = typer.Option(1337, help="Corpus build seed; recorded in the manifest."),
+) -> None:
+    """Build the full-scale (VM) corpus, sized by the Phase 0.5 power analysis."""
+    _build_corpus("full", seed)
 
 
 @app.command()

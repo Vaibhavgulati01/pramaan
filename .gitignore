@@ -11,12 +11,14 @@ venv/
 .ruff_cache/
 .pytest_cache/
 
-# Data & artifacts — never commit real dataset images or bulk downloads.
-# See scripts/check_image_licenses.py for the CI-enforced allowlist on
-# what image files ARE permitted to be committed (self-authored / synthetic only).
-data/raw/
-data/cache/
-data/full/
+# Data & artifacts — never commit real dataset images, bulk downloads, or
+# the constructed corpus (raw/, dev/, full/ all included): ABO/GenImage
+# are CC BY-NC(-SA), the corpus's per-claim manifest carries synthetic
+# identity fields, and neither belongs in a public git history regardless
+# of scale. See docs/DATA_CARD.md and scripts/check_image_licenses.py
+# (Phase 6) for the CI-enforced allowlist on what image files ARE
+# permitted to be committed (self-authored / synthetic-placeholder only).
+data/
 *.faiss
 *.index
 

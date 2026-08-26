@@ -119,10 +119,29 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Data
 
-See [`docs/DATA_CARD.md`](docs/DATA_CARD.md) — which parts are real
-public data, which are simulated (declared here, in that doc, and in a
-code comment at the top of `simulate_ledger.py`), and the sensitivity
-sweep over simulator parameters.
+**PRAMAAN-Bench-v1** is built from two real public sources — [Amazon
+Berkeley Objects](https://registry.opendata.aws/amazon-berkeley-objects/)
+(CC BY-NC 4.0) for real product photos, and a
+[GenImage](https://github.com/GenImage-Dataset/GenImage)-derived set
+(CC BY-NC-SA 4.0) for AI-generated images across 8 generator families.
+
+**The claim ledger is simulated, and that is stated in three places** —
+here, in [`docs/DATA_CARD.md`](docs/DATA_CARD.md), and in the module
+docstring of `benchmarks/simulate_ledger.py`. There is no public dataset
+of refund claims with claimant history, so every claimant identity, order
+record, timestamp, and device fingerprint is synthetic, with parameters
+anchored to published rates (~15% fraud among returns, ~23% India RTO).
+Only the images are real. Pillar 4 (claimant behaviour) is therefore
+evaluated entirely on simulated data and its contribution is reported
+separately from the image pillars, never blended into a single headline
+number.
+
+**No dataset images are redistributed here** — `data/` is gitignored in
+full. The repo ships the *builder* and a manifest recording each claim's
+upstream source, licence, source SHA256, transform, and output SHA256, so
+the corpus is rebuildable byte-identically without this repo carrying
+NC-licensed images. See [`docs/REAL_DATA_ONRAMP.md`](docs/REAL_DATA_ONRAMP.md)
+for the exact schema that replaces the simulator with real merchant data.
 
 ## Limitations
 

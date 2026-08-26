@@ -30,6 +30,9 @@ dependencies = [
     "typer>=0.15,<0.17",
     "piexif>=1.1,<1.2",
     "PyYAML>=6.0,<6.1",
+    "Faker>=25,<38",
+    "datasets>=3.0,<4.0",
+    "huggingface_hub>=0.24,<0.28",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +48,7 @@ dev = [
     "hypothesis>=6.100,<6.113",
     "ruff>=0.6,<0.8",
     "mypy>=1.10,<1.12",
+    "types-PyYAML>=6.0,<6.1",
 ]
 
 [project.scripts]

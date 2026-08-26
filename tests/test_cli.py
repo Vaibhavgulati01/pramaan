@@ -26,9 +26,10 @@ def test_setup_runs() -> None:
 
 
 def test_pending_commands_do_not_crash() -> None:
+    # `data`/`data-full` are excluded: they have landed (Phase 1) and now
+    # do real work (network fetch + corpus write), so they are covered by
+    # tests/test_benchmarks_build_bench.py against a temp dir instead.
     for args in (
-        ["data", "--scale", "dev"],
-        ["data-full"],
         ["train"],
         ["eval"],
         ["report"],
@@ -36,6 +37,12 @@ def test_pending_commands_do_not_crash() -> None:
     ):
         result = runner.invoke(app, args)
         assert result.exit_code == 0, f"{args} crashed: {result.output}"
+
+
+def test_data_rejects_full_scale() -> None:
+    result = runner.invoke(app, ["data", "--scale", "full"])
+    assert result.exit_code == 1
+    assert "data-full" in result.output
 
 
 def test_all_full_scale_is_rejected() -> None:

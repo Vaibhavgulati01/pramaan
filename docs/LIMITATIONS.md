@@ -9,6 +9,50 @@
 > limitations section stops looking for the flaws you hid, because you've
 > demonstrated you already found them.
 
+## Found while building (real, specific)
+
+**Entity resolution is fuzzy, and fuzzy means wrong sometimes — in both
+directions.** Building Phase 1 surfaced this concretely rather than
+theoretically:
+
+- *False merges.* At a `token_set_ratio ≥ 85` threshold, two genuinely
+  different households merged into one canonical identity because they
+  shared a street and locality inside one PIN code (`H.No. 97 Chanda
+  Marg, Faridabad` vs `H.No. 51 Garg Marg, Faridabad`). `token_set_ratio`
+  is deliberately forgiving about differing tokens, which is exactly
+  wrong for addresses, where the house number is often the *entire*
+  distinguishing signal. `addresses_match` now additionally requires
+  numeric tokens to intersect when both sides have them.
+- *Irreducible ambiguity.* That fix does not eliminate the problem. A
+  residual case — `H.No. 06 Tata Marg, Sri Ganganagar` vs `H.No. 06
+  Sarraf, Sri Ganganagar` (same PIN, same house number, different
+  street) — is genuinely ambiguous; a human would hesitate too. **No
+  threshold tuning drives this to zero**, which is why the corpus build
+  enforces one-split-per-entity-component structurally and reports the
+  claims it drops, rather than trusting the matcher.
+- *False splits are the more dangerous direction and are harder to see.*
+  A claimant who uses a fresh phone, a fresh email, and a slightly
+  different address on each claim will not be linked at all. Every
+  entity-disjointness guarantee in this repo is a guarantee **about the
+  canonicalisation we implemented**, not about ground-truth humans. On
+  real merchant data with adversarial claimants deliberately varying
+  their details, the true entity-leakage rate is unmeasured and is
+  probably higher than zero.
+
+**One generator family in the spec does not exist in the public data.**
+§6's split names SD 1.4 as a train family; the public Tiny-GenImage
+mirror declares an `SD14` label but carries no SD14 rows. We substituted
+SD 1.5 (`docs/DATA_CARD.md`). The holdout structure is preserved, but any
+claim about generalising *from SD 1.4 specifically* is not supported by
+this corpus.
+
+**Device fingerprints are not identity.** UA strings change on browser
+update, font lists change on app install, timezone changes on travel.
+`ingest/device.py` computes the fingerprint but it is deliberately **not**
+used as an entity-linking signal for the leakage audit — only as a P4
+behavioural feature. Two matching fingerprints mean "same device
+configuration observed," not "same person."
+
 ## Known limitations to document as each phase lands
 
 - **Scale**: `DEV`-scale numbers anywhere in this repo are
