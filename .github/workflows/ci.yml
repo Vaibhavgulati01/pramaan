@@ -32,6 +32,17 @@ jobs:
           python -m pramaan.cli --help
           python -m pramaan.cli setup
 
+      # No NC-licensed image derivative may be committed: ABO is CC BY-NC
+      # 4.0 and the GenImage-derived set is CC BY-NC-SA 4.0, while this
+      # repo is public and Apache-2.0. See docs/DATA_CARD.md.
+      - name: Image licence gate
+        run: python scripts/check_image_licenses.py
+
+      # Every README number is generated from metrics.json. This turns
+      # "nothing is hand-typed" from a promise into a checked property.
+      - name: README matches metrics.json
+        run: python scripts/inject_metrics.py --tier dev --check
+
   # `smoke`-tier end-to-end pipeline run: ~200 claims, built from the real
   # public sources. See docs/EVALUATION_PROTOCOL.md for the three-tier
   # (smoke/dev/full) discipline and why smoke output is never a reported

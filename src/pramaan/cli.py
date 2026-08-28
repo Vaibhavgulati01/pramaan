@@ -285,20 +285,62 @@ def certify(
     _run_certify(scale.value, use_clip=clip)
 
 
-@app.command()
-def eval(  # noqa: A001 - matches the spec's `make eval`
+def _run_eval(tier: str, use_clip: bool, n_resamples: int, skip_slow: bool) -> None:
+    import logging
+
+    from eval.run_eval import run_eval, summarise
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    metrics = run_eval(
+        tier,
+        _repo_root(),
+        use_clip=use_clip,
+        n_resamples=n_resamples,
+        skip_slow=skip_slow,
+    )
+    typer.echo("")
+    typer.echo(summarise(metrics))
+
+
+@app.command(name="eval")
+def eval_(
     scale: Scale = typer.Option(Scale.dev, help="smoke, dev, or full."),
+    clip: bool = typer.Option(True, help="Use CLIP embeddings in the reuse pillar."),
+    resamples: int = typer.Option(2000, help="Bootstrap resamples (Sec.6 asks for 2000)."),
+    skip_slow: bool = typer.Option(
+        False, help="Skip ablations and negative controls (they refit the model repeatedly)."
+    ),
 ) -> None:
-    """Run baselines, ablations, shift matrix, bootstrap CIs. Lands in Phase 6."""
-    _pending(f"eval --scale {scale.value}", "Phase 6")
+    """Run baselines, ablations, negative controls and cost analysis."""
+    _run_eval(scale.value, use_clip=clip, n_resamples=resamples, skip_slow=skip_slow)
+
+
+def _run_report(tier: str, check: bool) -> None:
+    import subprocess
+
+    root = _repo_root()
+    command = [
+        sys.executable,
+        str(root / "scripts" / "inject_metrics.py"),
+        "--tier", tier,
+        "--repo-root", str(root),
+    ]
+    if check:
+        command.append("--check")
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        raise typer.Exit(code=result.returncode)
 
 
 @app.command()
 def report(
     scale: Scale = typer.Option(Scale.dev, help="smoke, dev, or full."),
+    check: bool = typer.Option(
+        False, help="Do not write; fail if the committed README is out of date (CI)."
+    ),
 ) -> None:
-    """Regenerate README-injected tables from reports/{scale}/metrics.json. Lands in Phase 6."""
-    _pending(f"report --scale {scale.value}", "Phase 6")
+    """Regenerate the README's generated sections from reports/{scale}/metrics.json."""
+    _run_report(scale.value, check=check)
 
 
 @app.command()

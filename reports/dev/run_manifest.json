@@ -1,0 +1,35 @@
+{
+  "git_sha": "6b3a2adca829c73ca4f14b9de5ca77ab1a752e57",
+  "generated_at": "2026-08-28T19:07:59+00:00",
+  "tier": "dev",
+  "split_evaluated": "train",
+  "seed": 1337,
+  "feature_schema_version": "1.1.0",
+  "model_config": {
+    "num_leaves": 31,
+    "learning_rate": 0.05,
+    "n_estimators": 300,
+    "min_child_samples": 20,
+    "seed": 1337,
+    "n_folds": 5,
+    "apply_monotone_constraints": true
+  },
+  "corpus_manifest_counts": {
+    "claims": 3000,
+    "by_split": {
+      "train": 1813,
+      "test": 607,
+      "calibration": 580
+    },
+    "by_fraud_class": {
+      "legit_real_photo": 2555,
+      "fraud_recycled_prior_claim": 145,
+      "fraud_synthetic_image": 144,
+      "fraud_catalog_photo": 93,
+      "fraud_screen_rephotograph": 39,
+      "fraud_metadata_inconsistent_edit": 24
+    },
+    "fraud_prevalence": 0.14833333333333334
+  },
+  "n_resamples": 2000
+}

@@ -68,10 +68,37 @@ is what lets the statistical guarantee survive generator shift.
 
 ## Results
 
-*(Populated by `scripts/inject_metrics.py` from `reports/full/metrics.json`
-once the VM run lands — Phase 9. Until then, see `reports/dev/` for
-DEV-labeled mechanism-validation numbers, linked not inlined, per the
-tier discipline above.)*
+<!-- BEGIN:results -->
+> **⚠️ These are `dev`-scale numbers, not a held-out result.**
+> They evaluate the *train* split's out-of-fold predictions and exist to
+> prove the mechanisms work. The reportable certificate and results come
+> from the `full` tier — see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
+
+Evaluated on the **train** split of the `dev` corpus — 1,813 claims, 14.5% fraud prevalence.
+
+| System | PR-AUC (95% CI) |
+|---|---|
+| approve all | 0.145 [0.128, 0.162] |
+| deny all | 0.145 [0.128, 0.162] |
+| rules engine | 0.240 [0.201, 0.283] |
+| clip probe | 0.382 [0.330, 0.436] |
+| resnet style pixel probe | 0.174 [0.148, 0.204] |
+| behaviour only gbm | 0.171 [0.141, 0.204] |
+| **PRAMAAN (full)** | 0.512 [0.453, 0.569] |
+
+**₹35,437 per 1,000 claims** at **83.0% review load**.
+
+| Policy | ₹ per 1,000 claims |
+|---|---|
+| approve all | ₹632,451 |
+| deny all | ₹4,433,044 |
+| review all | ₹40,000 |
+| **PRAMAAN** | **₹35,437** |
+
+Calibration: Brier **0.0856**, ECE **0.0080**, MCE **0.0219** (10 equal-mass bins).
+
+Cascade: **147.9 ms/claim** mean, stage-exit 0% / 0% / 100% (stages 1/2/3).
+<!-- END:results -->
 
 ### Why false positives cost more than false negatives
 
@@ -82,8 +109,26 @@ width of the abstention band.)*
 
 ## The guarantee
 
-See [`docs/GUARANTEE.md`](docs/GUARANTEE.md) — filled in through Phases
-0.5, 4, and 9.
+<!-- BEGIN:guarantee -->
+> **⚠️ These are `dev`-scale numbers, not a held-out result.**
+> They evaluate the *train* split's out-of-fold predictions and exist to
+> prove the mechanisms work. The reportable certificate and results come
+> from the `full` tier — see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
+
+**No α/δ rung certified.** Every rung of the pre-committed ladder was
+attempted and each failed; that is the published result rather than a
+loosened bound. See [`docs/GUARANTEE.md`](docs/GUARANTEE.md).
+
+| α | δ | Outcome |
+|---|---|---|
+| 0.03 | 0.1 | failed — no threshold reached 222 denials, the minimum that can certify alpha=0.03 at delta=0.1 even with zero errors |
+| 0.05 | 0.1 | failed — no threshold reached 131 denials, the minimum that can certify alpha=0.05 at delta=0.1 even with zero errors |
+| 0.1 | 0.1 | failed — no threshold reached 64 denials, the minimum that can certify alpha=0.1 at delta=0.1 even with zero errors |
+| 0.1 | 0.2 | failed — no threshold reached 45 denials, the minimum that can certify alpha=0.1 at delta=0.2 even with zero errors |
+<!-- END:guarantee -->
+
+Full statement, the three caveats that qualify it, and the power analysis
+that sized the corpus: [`docs/GUARANTEE.md`](docs/GUARANTEE.md).
 
 ## Shift & robustness
 
@@ -93,9 +138,36 @@ shifted calibration data. Real ❌s reported, not hidden.)*
 
 ## Ablations
 
-*(Phase 9 — actuals reported against
-[`docs/PREREGISTRATION.md`](docs/PREREGISTRATION.md), including any
-misses.)*
+<!-- BEGIN:ablations -->
+> **⚠️ These are `dev`-scale numbers, not a held-out result.**
+> They evaluate the *train* split's out-of-fold predictions and exist to
+> prove the mechanisms work. The reportable certificate and results come
+> from the `full` tier — see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
+
+Each ablation is reported twice. The **full corpus** column is confounded
+by source dataset — every synthetic-fraud claim comes from GenImage, which
+carries 2.58× the fraud rate of ABO — so it is an *upper bound* on the
+pixel pillars. The **ABO-only** column holds source constant.
+
+| Ablation | Δ PR-AUC (full corpus) | Δ PR-AUC (ABO-only) |
+|---|---|---|
+| no provenance | +0.0000 | +0.0000 |
+| no forensics | -0.1024 | -0.0335 |
+| no reuse | -0.0220 | -0.0273 |
+| no behaviour | -0.0090 | +0.0007 |
+| no rings | -0.0013 | -0.0083 |
+
+**Negative controls** (these validate the methodology, not a hypothesis):
+
+| Control | PR-AUC | Prevalence | Pass? |
+|---|---|---|---|
+| label shuffle | 0.1543 | 0.1445 | ✅ |
+| random features | 0.1620 | 0.1445 | ✅ |
+<!-- END:ablations -->
+
+Predictions were registered in advance
+([`docs/PREREGISTRATION.md`](docs/PREREGISTRATION.md)); Phase 9 reports
+actuals against them, including the misses.
 
 ## Reproduce
 

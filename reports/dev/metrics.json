@@ -1,0 +1,579 @@
+{
+  "tier": "dev",
+  "split_evaluated": "train",
+  "is_reportable_result": false,
+  "scale_warning": "DEV \u2014 not a held-out result. Evaluated on the train split's out-of-fold predictions for mechanism validation only. See docs/EVALUATION_PROTOCOL.md.",
+  "n_claims": 1813,
+  "prevalence": 0.14451185879757308,
+  "pr_auc": {
+    "point": 0.5120002033027297,
+    "ci_lower": 0.45281847037618267,
+    "ci_upper": 0.5689265705880039,
+    "ci_width": 0.11610810021182122,
+    "n_resamples": 2000.0
+  },
+  "p_at_90r": 0.1871069182389937,
+  "r_at_95p": 0.1450381679389313,
+  "calibration": {
+    "overall": {
+      "brier": 0.08560218535086368,
+      "ece": 0.008022963314845163,
+      "mce": 0.021896265100942364,
+      "n": 1813.0,
+      "n_bins": 10.0
+    },
+    "per_group": {
+      "apparel|high": {
+        "brier": 0.10771210358552621,
+        "ece": 0.05704278513799815,
+        "mce": 0.1328907754896634,
+        "n": 133.0,
+        "n_bins": 10.0
+      },
+      "apparel|low": {
+        "brier": 0.0984262524353117,
+        "ece": 0.05096788273199492,
+        "mce": 0.09589529665646362,
+        "n": 124.0,
+        "n_bins": 10.0
+      },
+      "apparel|mid": {
+        "brier": 0.073442860282009,
+        "ece": 0.0236616202826243,
+        "mce": 0.08585078514455693,
+        "n": 112.0,
+        "n_bins": 10.0
+      },
+      "beauty|high": {
+        "brier": 0.08320385759679438,
+        "ece": 0.04387820463078238,
+        "mce": 0.1759275627052845,
+        "n": 122.0,
+        "n_bins": 10.0
+      },
+      "beauty|low": {
+        "brier": 0.10299721739958517,
+        "ece": 0.06753240338292514,
+        "mce": 0.2396649193096474,
+        "n": 121.0,
+        "n_bins": 10.0
+      },
+      "beauty|mid": {
+        "brier": 0.09086318289157265,
+        "ece": 0.03985963311913729,
+        "mce": 0.05452016375274242,
+        "n": 129.0,
+        "n_bins": 10.0
+      },
+      "electronics|high": {
+        "brier": 0.04914626785040181,
+        "ece": 0.05550490605944286,
+        "mce": 0.12723902599977038,
+        "n": 113.0,
+        "n_bins": 10.0
+      },
+      "electronics|low": {
+        "brier": 0.07083565831536862,
+        "ece": 0.046158741787827286,
+        "mce": 0.10347051556471644,
+        "n": 110.0,
+        "n_bins": 10.0
+      },
+      "electronics|mid": {
+        "brier": 0.08094530707956761,
+        "ece": 0.07155101660333714,
+        "mce": 0.20231193032208425,
+        "n": 118.0,
+        "n_bins": 10.0
+      },
+      "home|high": {
+        "brier": 0.07630205242268015,
+        "ece": 0.05784156425793073,
+        "mce": 0.08525003260110361,
+        "n": 134.0,
+        "n_bins": 10.0
+      },
+      "home|low": {
+        "brier": 0.06253018279746334,
+        "ece": 0.060143150234210935,
+        "mce": 0.13749789128099332,
+        "n": 119.0,
+        "n_bins": 10.0
+      },
+      "home|mid": {
+        "brier": 0.08146592801213716,
+        "ece": 0.032865664859927285,
+        "mce": 0.10070058790570585,
+        "n": 114.0,
+        "n_bins": 10.0
+      },
+      "sports|high": {
+        "brier": 0.09681436489774521,
+        "ece": 0.0557954935532074,
+        "mce": 0.1320386658181532,
+        "n": 112.0,
+        "n_bins": 10.0
+      },
+      "sports|low": {
+        "brier": 0.10295757595795897,
+        "ece": 0.039385515747519174,
+        "mce": 0.10791713325515633,
+        "n": 126.0,
+        "n_bins": 10.0
+      },
+      "sports|mid": {
+        "brier": 0.09873150125523415,
+        "ece": 0.040290067493973396,
+        "mce": 0.1555631023440987,
+        "n": 126.0,
+        "n_bins": 10.0
+      }
+    },
+    "worst_groups": [
+      {
+        "group": "electronics|mid",
+        "brier": 0.08094530707956761,
+        "ece": 0.07155101660333714,
+        "mce": 0.20231193032208425,
+        "n": 118.0,
+        "n_bins": 10.0
+      },
+      {
+        "group": "beauty|low",
+        "brier": 0.10299721739958517,
+        "ece": 0.06753240338292514,
+        "mce": 0.2396649193096474,
+        "n": 121.0,
+        "n_bins": 10.0
+      },
+      {
+        "group": "home|low",
+        "brier": 0.06253018279746334,
+        "ece": 0.060143150234210935,
+        "mce": 0.13749789128099332,
+        "n": 119.0,
+        "n_bins": 10.0
+      },
+      {
+        "group": "home|high",
+        "brier": 0.07630205242268015,
+        "ece": 0.05784156425793073,
+        "mce": 0.08525003260110361,
+        "n": 134.0,
+        "n_bins": 10.0
+      },
+      {
+        "group": "apparel|high",
+        "brier": 0.10771210358552621,
+        "ece": 0.05704278513799815,
+        "mce": 0.1328907754896634,
+        "n": 133.0,
+        "n_bins": 10.0
+      }
+    ]
+  },
+  "baselines": [
+    {
+      "name": "approve_all",
+      "description": "constant score 0.0",
+      "point": 0.14451185879757308,
+      "ci_lower": 0.12822669608383894,
+      "ci_upper": 0.16245173745173744,
+      "ci_width": 0.0342250413678985,
+      "n_resamples": 500.0
+    },
+    {
+      "name": "deny_all",
+      "description": "constant score 1.0",
+      "point": 0.14451185879757308,
+      "ci_lower": 0.12822669608383894,
+      "ci_upper": 0.16245173745173744,
+      "ci_width": 0.0342250413678985,
+      "n_resamples": 500.0
+    },
+    {
+      "name": "rules_engine",
+      "description": "claim-count + order-value thresholds, hand-specified",
+      "point": 0.23995146580235255,
+      "ci_lower": 0.20127681322561847,
+      "ci_upper": 0.28318389827200885,
+      "ci_width": 0.08190708504639038,
+      "n_resamples": 500.0
+    },
+    {
+      "name": "clip_probe",
+      "description": "linear probe on reuse/CLIP features - 'just use a foundation model'",
+      "point": 0.3824899093514672,
+      "ci_lower": 0.329695265126611,
+      "ci_upper": 0.4364912453845433,
+      "ci_width": 0.1067959802579323,
+      "n_resamples": 500.0
+    },
+    {
+      "name": "resnet_style_pixel_probe",
+      "description": "linear probe on pixel/container statistics - ResNet-50 features + linear head, in the spirit of CNNSpot (NOT a faithful reimplementation)",
+      "point": 0.17414987689858108,
+      "ci_lower": 0.14838170181550156,
+      "ci_upper": 0.2038168897000905,
+      "ci_width": 0.05543518788458893,
+      "n_resamples": 500.0
+    },
+    {
+      "name": "behaviour_only_gbm",
+      "description": "linear probe on behavioural features - 'just use tabular fraud ML'",
+      "point": 0.17095672925510383,
+      "ci_lower": 0.14107342831827197,
+      "ci_upper": 0.20388196758533822,
+      "ci_width": 0.06280853926706625,
+      "n_resamples": 500.0
+    },
+    {
+      "name": "pramaan_full",
+      "description": "",
+      "point": 0.5120002033027297,
+      "ci_lower": 0.45281847037618267,
+      "ci_upper": 0.5689265705880039,
+      "ci_width": 0.11610810021182122,
+      "n_resamples": 2000.0
+    }
+  ],
+  "policy": {
+    "t_approve": 0.02,
+    "t_deny": 0.78,
+    "band_width": 0.76,
+    "certified": true,
+    "alpha": 0.1,
+    "delta": 0.1,
+    "selection_note": "cost-minimising member of the certified set",
+    "cost_per_1000": 35437.39658025373,
+    "review_rate": 0.8295642581356867,
+    "deny_rate": 0.03640375068946498,
+    "approve_rate": 0.13403199117484832,
+    "candidates": [
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.78,
+        "cost_per_1000": 35437.39658025373
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.77,
+        "cost_per_1000": 35437.39658025373
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.76,
+        "cost_per_1000": 35437.39658025373
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.75,
+        "cost_per_1000": 35437.39658025373
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.74,
+        "cost_per_1000": 35437.39658025373
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.73,
+        "cost_per_1000": 35437.39658025373
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.82,
+        "cost_per_1000": 35459.45945945946
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.81,
+        "cost_per_1000": 35459.45945945946
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.8,
+        "cost_per_1000": 35459.45945945946
+      },
+      {
+        "t_approve": 0.02,
+        "t_deny": 0.79,
+        "cost_per_1000": 35459.45945945946
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.78,
+        "cost_per_1000": 36055.15719801434
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.77,
+        "cost_per_1000": 36055.15719801434
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.76,
+        "cost_per_1000": 36055.15719801434
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.75,
+        "cost_per_1000": 36055.15719801434
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.74,
+        "cost_per_1000": 36055.15719801434
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.73,
+        "cost_per_1000": 36055.15719801434
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.82,
+        "cost_per_1000": 36077.220077220074
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.81,
+        "cost_per_1000": 36077.220077220074
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.8,
+        "cost_per_1000": 36077.220077220074
+      },
+      {
+        "t_approve": 0.01,
+        "t_deny": 0.79,
+        "cost_per_1000": 36077.220077220074
+      }
+    ],
+    "uncertified_best": null
+  },
+  "cost": {
+    "per_1000_claims": 35437.39658025373,
+    "per_claim_ci": {
+      "point": 35.437396580253726,
+      "ci_lower": 32.69718698290127,
+      "ci_upper": 40.34473248758963,
+      "ci_width": 7.64754550468836,
+      "n_resamples": 1000.0
+    },
+    "review_load_pct": 82.95642581356867,
+    "baselines_per_1000": {
+      "approve_all": 632450.6343077772,
+      "deny_all": 4433043.574186431,
+      "review_all": 40000.0
+    }
+  },
+  "exploration": {
+    "n_explored": 3.0,
+    "exploration_rate": 0.001654715940430226,
+    "min_propensity": 0.01,
+    "n_explored_fraud": 3.0,
+    "n_explored_legit": 0.0,
+    "cost_inr": 12738.0,
+    "savings_inr": 0.0,
+    "net_inr": 12738.0,
+    "cost_per_1000_claims": 7025.92388306674,
+    "labels_gained_in_denial_region": 3.0
+  },
+  "label_maturity": {
+    "as_of": "2026-02-03T23:59:00",
+    "maturity_days": 120,
+    "n_total": 1813,
+    "n_matured": 88,
+    "n_censored": 1725,
+    "matured_rate": 0.04853833425261997,
+    "censored_rate": 0.95146166574738
+  },
+  "cascade": {
+    "mean_compute_ms": 147.8893269722592,
+    "stage_exit_distribution": {
+      "stage_1": 0.0,
+      "stage_2": 0.0,
+      "stage_3": 1.0
+    }
+  },
+  "ablations": {
+    "results": [
+      {
+        "name": "full",
+        "subset": "all",
+        "pr_auc": 0.5103324718312694,
+        "brier": 0.08487467982360636,
+        "ece": 0.010162691578036075,
+        "delta_pr_auc": 0.0,
+        "n": 1813,
+        "note": ""
+      },
+      {
+        "name": "no_provenance",
+        "subset": "all",
+        "pr_auc": 0.5103324718312694,
+        "brier": 0.08487467982360636,
+        "ece": 0.010162691578036075,
+        "delta_pr_auc": 0.0,
+        "n": 1813,
+        "note": ""
+      },
+      {
+        "name": "no_forensics",
+        "subset": "all",
+        "pr_auc": 0.4079548846135822,
+        "brier": 0.09491328659785601,
+        "ece": 0.012441095833204734,
+        "delta_pr_auc": -0.1023775872176872,
+        "n": 1813,
+        "note": ""
+      },
+      {
+        "name": "no_reuse",
+        "subset": "all",
+        "pr_auc": 0.48833575943599483,
+        "brier": 0.08771161356683174,
+        "ece": 0.012135987107759677,
+        "delta_pr_auc": -0.021996712395274565,
+        "n": 1813,
+        "note": ""
+      },
+      {
+        "name": "no_behaviour",
+        "subset": "all",
+        "pr_auc": 0.5013213776673413,
+        "brier": 0.08658240698193145,
+        "ece": 0.0135603079418855,
+        "delta_pr_auc": -0.00901109416392809,
+        "n": 1813,
+        "note": ""
+      },
+      {
+        "name": "no_rings",
+        "subset": "all",
+        "pr_auc": 0.5090063069172374,
+        "brier": 0.0850766923001754,
+        "ece": 0.013909285371354923,
+        "delta_pr_auc": -0.0013261649140320353,
+        "n": 1813,
+        "note": ""
+      },
+      {
+        "name": "full",
+        "subset": "abo_only",
+        "pr_auc": 0.5168839343607419,
+        "brier": 0.048647167992234445,
+        "ece": 0.017571276853830642,
+        "delta_pr_auc": 0.0,
+        "n": 1192,
+        "note": ""
+      },
+      {
+        "name": "no_provenance",
+        "subset": "abo_only",
+        "pr_auc": 0.5168839343607419,
+        "brier": 0.048647167992234445,
+        "ece": 0.017571276853830642,
+        "delta_pr_auc": 0.0,
+        "n": 1192,
+        "note": ""
+      },
+      {
+        "name": "no_forensics",
+        "subset": "abo_only",
+        "pr_auc": 0.48343096436742944,
+        "brier": 0.050441527578961524,
+        "ece": 0.015955500262146267,
+        "delta_pr_auc": -0.03345296999331243,
+        "n": 1192,
+        "note": ""
+      },
+      {
+        "name": "no_reuse",
+        "subset": "abo_only",
+        "pr_auc": 0.48957934324151675,
+        "brier": 0.05011932522792458,
+        "ece": 0.008066289126873327,
+        "delta_pr_auc": -0.02730459111922512,
+        "n": 1192,
+        "note": ""
+      },
+      {
+        "name": "no_behaviour",
+        "subset": "abo_only",
+        "pr_auc": 0.5176309680798196,
+        "brier": 0.048249184064322256,
+        "ece": 0.009588602639564448,
+        "delta_pr_auc": 0.0007470337190776943,
+        "n": 1192,
+        "note": ""
+      },
+      {
+        "name": "no_rings",
+        "subset": "abo_only",
+        "pr_auc": 0.5085958181429259,
+        "brier": 0.04954290405523421,
+        "ece": 0.016864733013300246,
+        "delta_pr_auc": -0.008288116217816,
+        "n": 1192,
+        "note": ""
+      }
+    ],
+    "interpretation_warning": "Full-corpus ablations are confounded by source dataset: every synthetic-fraud claim comes from GenImage, which carries 2.58x the fraud rate of ABO. Read the 'abo_only' subset for the source-controlled figure. See docs/LIMITATIONS.md."
+  },
+  "configuration_ablations": [
+    {
+      "name": "full",
+      "subset": "all",
+      "pr_auc": 0.5103324718312694,
+      "brier": 0.08487467982360636,
+      "ece": 0.010162691578036075,
+      "delta_pr_auc": 0.0,
+      "n": 1813,
+      "note": ""
+    },
+    {
+      "name": "no_calibration",
+      "subset": "all",
+      "pr_auc": 0.5103324718312694,
+      "brier": 0.09937568765287282,
+      "ece": 0.060014385396317656,
+      "delta_pr_auc": 0.0,
+      "n": 1813,
+      "note": "PR-AUC is unchanged by construction: isotonic calibration is monotone, so it cannot alter ranking. ECE is the metric that moves."
+    },
+    {
+      "name": "no_monotone_constraints",
+      "subset": "all",
+      "pr_auc": 0.4995377560755524,
+      "brier": 0.08648704827826413,
+      "ece": 0.007735934880827283,
+      "delta_pr_auc": -0.010794715755717,
+      "n": 1813,
+      "note": "Constraints buy robustness under shift and coherent reason codes, not in-distribution accuracy. A small gain here is expected and is not an argument for removing them."
+    }
+  ],
+  "negative_controls": [
+    {
+      "name": "label_shuffle",
+      "description": "retrained on permuted labels; PR-AUC must collapse to prevalence",
+      "pr_auc": 0.15428126309752116,
+      "baseline_pr_auc": 0.5120002033027297,
+      "prevalence": 0.14451185879757308,
+      "passed": true,
+      "note": ""
+    },
+    {
+      "name": "random_features",
+      "description": "every feature replaced with noise; PR-AUC must collapse to prevalence",
+      "pr_auc": 0.16204391408059554,
+      "baseline_pr_auc": 0.5120002033027297,
+      "prevalence": 0.14451185879757308,
+      "passed": true,
+      "note": ""
+    }
+  ],
+  "elapsed_seconds": 32.1
+}

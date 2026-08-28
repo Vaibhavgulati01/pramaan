@@ -293,6 +293,17 @@ class FusionModel:
         import pickle
 
         (directory / "calibrator.pkl").write_bytes(pickle.dumps(self.calibrator))
+
+        # Out-of-fold predictions are a genuine training artifact, not a
+        # cache: evaluation at dev/smoke scale reports on them because
+        # they are the only honest (non-in-sample) scores available for
+        # the train split. Recomputing them would mean refitting K models.
+        if self.oof_predictions is not None and self.oof_calibrated is not None:
+            np.savez(
+                directory / "oof.npz",
+                raw=self.oof_predictions,
+                calibrated=self.oof_calibrated,
+            )
         (directory / "metadata.json").write_text(
             json.dumps(
                 {
@@ -329,4 +340,10 @@ class FusionModel:
         model = cls(FusionConfig(**metadata["config"]))
         model.booster = lgb.Booster(model_file=str(directory / "lightgbm.txt"))
         model.calibrator = pickle.loads((directory / "calibrator.pkl").read_bytes())
+
+        oof_path = directory / "oof.npz"
+        if oof_path.exists():
+            arrays = np.load(oof_path)
+            model.oof_predictions = arrays["raw"]
+            model.oof_calibrated = arrays["calibrated"]
         return model
