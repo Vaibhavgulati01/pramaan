@@ -3,8 +3,20 @@ services:
     build: .
     ports:
       - "8000:8000"
-    volumes:
-      - ./reports:/app/reports:ro
-      - ./configs:/app/configs:ro
     environment:
-      - PRAMAAN_SCALE=dev
+      # Which tier's model to serve. `full` is produced on the VM.
+      PRAMAAN_SCALE: dev
+      # Override in any real deployment - the default is a documented
+      # placeholder, not a secret.
+      PRAMAAN_SIGNING_KEY: ${PRAMAAN_SIGNING_KEY:-development-key-not-for-production}
+    volumes:
+      # Models and corpora live outside the image: they are large, and
+      # the corpus images are NC-licensed so they must never be baked in
+      # (docs/DATA_CARD.md).
+      - ./data:/app/data:ro
+      - ./reports:/app/reports:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

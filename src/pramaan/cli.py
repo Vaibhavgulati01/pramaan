@@ -345,11 +345,17 @@ def report(
 
 @app.command()
 def serve(
-    host: str = "127.0.0.1",
-    port: int = 8000,
+    host: str = typer.Option("127.0.0.1", help="Bind address."),
+    port: int = typer.Option(8000, help="Bind port."),
+    scale: Scale = typer.Option(Scale.dev, help="Which tier's model to serve."),
 ) -> None:
-    """Launch the FastAPI /adjudicate /explain /healthz service. Lands in Phase 8."""
-    _pending(f"serve (host={host}, port={port})", "Phase 8")
+    """Launch the FastAPI /adjudicate /explain /healthz service."""
+    import os
+
+    import uvicorn
+
+    os.environ["PRAMAAN_SCALE"] = scale.value
+    uvicorn.run("pramaan.api.app:app", host=host, port=port, log_level="info")
 
 
 @app.command(name="all")
