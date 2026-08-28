@@ -25,18 +25,36 @@ def test_setup_runs() -> None:
     assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
-def test_pending_commands_do_not_crash() -> None:
-    # `data`/`data-full` are excluded: they have landed (Phase 1) and now
-    # do real work (network fetch + corpus write), so they are covered by
-    # tests/test_benchmarks_build_bench.py against a temp dir instead.
-    for args in (
-        ["train"],
-        ["eval"],
-        ["report"],
-        ["serve"],
-    ):
+def test_commands_are_invocable_and_fail_informatively() -> None:
+    """Every command must respond to invocation with either success or a
+    clear, actionable error - never an unhandled traceback.
+
+    This deliberately does NOT require exit code 0. Commands that have
+    landed (`train`, `certify`) do real work and correctly refuse when no
+    corpus has been built; commands still pending exit 0 with a "lands in
+    Phase N" notice. An earlier version asserted 0 for all of them and
+    passed locally purely because this machine has a dev corpus - CI,
+    which has no `data/` (gitignored), failed. The test was encoding local
+    state rather than a property of the CLI.
+    """
+    from benchmarks.loaders import CorpusNotBuiltError
+    from pramaan.fusion.model import ModelNotTrainedError
+
+    for args in (["train"], ["certify"], ["eval"], ["report"], ["serve"]):
         result = runner.invoke(app, args)
-        assert result.exit_code == 0, f"{args} crashed: {result.output}"
+        if result.exit_code == 0:
+            continue
+        # A missing corpus is a legitimate, expected state. Anything else
+        # is a genuine crash.
+        expected = CorpusNotBuiltError | ModelNotTrainedError | SystemExit
+        assert isinstance(result.exception, expected), (
+            f"{args} raised {type(result.exception).__name__}: {result.exception}"
+        )
+        if isinstance(result.exception, CorpusNotBuiltError | ModelNotTrainedError):
+            message = str(result.exception)
+            assert "pramaan " in message, (
+                f"{args} failed without telling the user how to fix it: {message}"
+            )
 
 
 def test_data_rejects_full_scale() -> None:
@@ -68,6 +86,7 @@ def test_all_passes_real_values_not_typer_sentinels(monkeypatch) -> None:
 
     monkeypatch.setattr(cli, "_build_corpus", fake_build)
     monkeypatch.setattr(cli, "_run_setup", lambda: True)
+    monkeypatch.setattr(cli, "_run_train", lambda tier, use_clip: None)
 
     result = runner.invoke(app, ["all", "--scale", "smoke"])
     assert result.exit_code == 0, result.output
@@ -84,6 +103,7 @@ def test_all_forwards_an_explicit_seed(monkeypatch) -> None:
         cli, "_build_corpus", lambda tier, seed: captured.update(tier=tier, seed=seed)
     )
     monkeypatch.setattr(cli, "_run_setup", lambda: True)
+    monkeypatch.setattr(cli, "_run_train", lambda tier, use_clip: None)
 
     result = runner.invoke(app, ["all", "--scale", "smoke", "--seed", "99"])
     assert result.exit_code == 0, result.output

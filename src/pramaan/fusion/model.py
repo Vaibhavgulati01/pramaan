@@ -122,6 +122,14 @@ class FusionTrainingReport:
         }
 
 
+class ModelNotTrainedError(FileNotFoundError):
+    """Raised when a model is loaded before it has been trained.
+
+    A subclass of FileNotFoundError so existing handlers still catch it,
+    but carrying the command that fixes it rather than a raw path.
+    """
+
+
 class SplitDisciplineError(RuntimeError):
     """Raised when training is handed data from a split it must not see.
 
@@ -299,7 +307,16 @@ class FusionModel:
 
     @classmethod
     def load(cls, directory: Path) -> FusionModel:
-        metadata = json.loads((directory / "metadata.json").read_text())
+        metadata_path = directory / "metadata.json"
+        if not metadata_path.exists():
+            # A bare FileNotFoundError here tells the user a path they did
+            # not ask about; this tells them the command to run.
+            tier = directory.parent.name or "dev"
+            raise ModelNotTrainedError(
+                f"no trained model at {directory}. "
+                f"Train it with: pramaan train --scale {tier}"
+            )
+        metadata = json.loads(metadata_path.read_text())
         if metadata["schema_version"] != FEATURE_SCHEMA_VERSION:
             raise ValueError(
                 f"model was trained on feature schema {metadata['schema_version']}, "
