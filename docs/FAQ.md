@@ -19,7 +19,7 @@ contributes **−0.0335** PR-AUC and reuse **−0.0273** — *comparable*, not
 "pixel model disposable". On the uncontrolled corpus forensics looks 3×
 more important, and roughly two-thirds of that is it detecting *which
 dataset an image came from*. See
-[`LIMITATIONS.md`](LIMITATIONS.md#roughly-two-thirds).
+[`LIMITATIONS.md`](LIMITATIONS.md#roughly-two-thirds-of-the-forensics-signal-is-source-not-fraud).
 
 So: the honest claim is that reuse is the pillar we expect to survive
 generator shift, and the shift matrix measures whether it does.

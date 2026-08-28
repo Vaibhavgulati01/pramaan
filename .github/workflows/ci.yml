@@ -38,6 +38,9 @@ jobs:
       - name: Image licence gate
         run: python scripts/check_image_licenses.py
 
+      - name: Doc links and anchors
+        run: python scripts/check_doc_links.py
+
       # Every README number is generated from metrics.json. This turns
       # "nothing is hand-typed" from a promise into a checked property.
       - name: README matches metrics.json

@@ -110,6 +110,8 @@ not present).** We have deliberately not tuned the transform to make our
 own detector look better — the honest reading is that results on this
 class say little either way.
 
+### Roughly two-thirds of the forensics signal is source, not fraud
+
 **Roughly two-thirds of the forensics pillar's apparent contribution is
 an artifact of which dataset an image came from.** This is quantified,
 not suspected, and it qualifies the repository's central ablation claim.

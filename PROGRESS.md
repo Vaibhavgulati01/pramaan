@@ -415,11 +415,29 @@ calibration) is the run that settles it.
 
 ### What I still owe afterwards
 
+Genuinely blocked on `full` — each needs numbers that do not exist yet:
+
 1. `PREREGISTRATION.md` actuals — including the misses
 2. `reports/SCALE_CONCORDANCE.md` — dev vs full, disagreement as a finding
-3. The shift-matrix driver (all eight conditions + two-experiment design exist; needs wiring to the frozen test split)
-4. README problem statement with sourced figures, and the architecture diagram
-5. A tagged release
+3. The shift-matrix driver (all eight conditions + the two-experiment
+   design exist; wiring targets the frozen test split, which `full`
+   creates)
+4. A tagged release, once the README carries `full` numbers
+
+**Done since, and no longer waiting on the VM:**
+
+- README problem statement, with figures attributed to NRF/Happy Returns
+  and Appriss/Deloitte — including the fact that those two sources
+  **disagree** on the fraud rate (9% vs 15.14%), reported rather than
+  averaged away. India RTO figures are labelled vendor-reported because
+  no primary source exists for them.
+- Architecture diagram (mermaid, renders natively on GitHub), covering
+  the cascade, the certificate, and the dotted *nothing-certified →
+  auto-deny-disabled* path the system actually took at `dev`.
+- `scripts/check_doc_links.py` + CI gate: every relative link and anchor
+  in the repo's markdown resolves. It found a dead anchor I had written
+  into `FAQ.md`, pointing at a section of `LIMITATIONS.md` that did not
+  exist.
 
 ## Phases 5–8 summary
 

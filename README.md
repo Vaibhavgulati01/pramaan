@@ -16,9 +16,11 @@ decision rather than chosen by hand.
 
 ---
 
-**Status: under active build — Phase 1 of 9 complete** (ingest,
-canonicalisation, benchmark builder, leakage audits; see
-[`PROGRESS.md`](PROGRESS.md)). This README is a living document,
+**Status: Phases 0–8 complete; Phase 9 blocked on the full-scale run.**
+All mechanisms are built, tested (514 tests) and exercised end-to-end at
+`dev` scale. What remains is the `full`-scale run on a larger machine —
+the runbook is [`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md), progress is
+tracked in [`PROGRESS.md`](PROGRESS.md). This README is a living document,
 generated in its final numeric form by `scripts/inject_metrics.py` from
 `reports/{tier}/metrics.json`. Nothing here is hand-typed once Phase 6
 lands. Every number in this repo is scale-labeled per
@@ -48,9 +50,56 @@ three-tier decisions with a certified bound on the false-denial rate,
 built from evidence pillars designed to survive the shift that actually
 happens in this domain: the attacker upgrading their image generator.
 
-*(Sourced figures — return-fraud prevalence, India RTO context, etc. —
-land here in Phase 9 alongside the full problem framing;
-`PRAMAAN_v2_architecture.md` §1 has the source paragraph this expands on.)*
+### The scale, from named sources
+
+| Figure | Value | Source |
+|---|---|---|
+| US merchandise returned, 2025 | **$849.9B** (15.8% of retail sales) | NRF / Happy Returns, *2025 Retail Returns Landscape*, 15 Oct 2025 |
+| Online sales returned | **19.3%** | same |
+| Returns that are fraudulent | **9%** | same |
+| Cost of fraudulent returns & claims, 2024 | **$103B** | Appriss Retail / Deloitte, *Consumer Returns in the Retail Industry*, 7th annual, Dec 2024 |
+| Returns that are fraudulent | **15.14%** | same |
+
+**Those last two rows disagree, and we are not going to average them.**
+Two credible industry surveys put fraudulent returns at 9% and 15.14%
+respectively — a 68% relative gap, from different panels, definitions of
+"fraudulent", and years. Anyone quoting a single confident number for
+this quantity is choosing one and not telling you. The honest reading is
+that return fraud is somewhere in the high single digits to mid teens as
+a share of returns, and that **the base rate is uncertain enough that a
+system acting on it should be able to abstain** — which is the design
+this repository argues for.
+
+### Why India makes it harder
+
+Roughly 60–65% of Indian e-commerce orders are cash-on-delivery, and
+COD orders are returned-to-origin at rates that logistics vendors put
+between **20% and 35%**, against low single digits for prepaid.
+
+**Source quality note:** unlike the two rows above, these India figures
+come from logistics-vendor blogs (Shipway, GoKwik, Qikink and similar),
+not from a primary survey with a published methodology. We could find no
+primary, methodologically-documented source for Indian RTO or
+return-fraud rates. They are directionally useful and quantitatively
+unreliable, and we mark them as such rather than laundering a marketing
+figure into a statistic. The one hard Indian data point we did find is a
+prosecution, not a rate: a seller-side ring defrauded Meesho of
+**₹5.5 crore over seven months** by exploiting the returns policy
+(*Deccan Herald*).
+
+This matters for the architecture: high return volume plus a
+photograph-as-proof workflow is exactly the setting where a scoring
+model gets deployed as a decision-maker without anyone bounding its
+error rate.
+
+### What follows from that
+
+A refund desk that must act on ~15% of orders coming back, with a fraud
+base rate no one can pin down inside a factor of two, cannot safely run
+on a threshold someone picked off a PR curve. It needs a decision
+procedure that (a) knows what it does not know, (b) carries a bound on
+how often it wrongly denies an honest customer, and (c) says so out loud
+when that bound stops holding.
 
 ## Approach
 
@@ -64,7 +113,48 @@ converted into a certified three-tier decision via Learn-then-Test.
 Three of the four pillars are generator-agnostic by construction, which
 is what lets the statistical guarantee survive generator shift.
 
-*(Architecture diagram — Phase 9.)*
+```mermaid
+flowchart TD
+    A["<b>L0 · INGEST</b><br/>image bytes · order · claimant · claim text<br/>identity canonicalisation — phone / email / address / device"]
+
+    A --> S1["<b>Stage 1</b> ~2 ms<br/>P1 provenance (C2PA) + P4 behaviour<br/><i>cached aggregates, keyed by canonical identity</i>"]
+    S1 -->|"p &lt; τ_lo or p &gt; τ_hi"| EX(["early exit<br/><i>claim still enters the reuse index</i>"])
+    S1 --> S2["<b>Stage 2</b> ~42 ms<br/>P2 container forensics<br/>QT tables · thumbnail desync · ELA · DCT · FFT"]
+    S2 -->|early exit| EX
+    S2 --> S3["<b>Stage 3</b> ~120 ms<br/>P3 reuse graph — <b>the moat</b><br/>pHash ≤ 2 → LSH bands → CLIP ≥ 0.98<br/><i>query_then_add: temporal leak is structurally impossible</i>"]
+
+    S3 --> F["<b>L2 · FUSION + CALIBRATION</b><br/>LightGBM, 48-feature versioned schema, 11 monotone constraints<br/>→ Mondrian isotonic per {category × price band}<br/>outputs p̂ with <i>per-group</i> reliability"]
+
+    F --> R["<b>L3 · RISK CONTROL — Learn-then-Test</b><br/>Hoeffding–Bentkus p-values · fixed-sequence testing<br/>→ certified set Λ̂(α, δ)<br/><b>P(FDR_deny ≤ α) ≥ 1 − δ</b>"]
+
+    R --> P{"<b>L4 · COST-OPTIMAL POLICY</b><br/>argmin ₹ <i>within</i> Λ̂"}
+    P -->|"p̂ &lt; t_approve"| AP([APPROVE])
+    P -->|"between"| RV([REVIEW])
+    P -->|"p̂ &gt; t_deny"| DN([DENY])
+
+    R -.->|"<b>nothing certified</b>"| OFF["auto-deny <b>disabled</b><br/><i>enforced in code, not by convention</i>"]
+    OFF -.-> RV
+
+    EX --> F
+
+    style S3 fill:#1a4d2e,stroke:#2d7a4a,color:#fff
+    style R fill:#1e3a5f,stroke:#3d6fa5,color:#fff
+    style OFF fill:#5c1a1a,stroke:#a33,color:#fff
+    style DN fill:#5c1a1a,stroke:#a33,color:#fff
+    style AP fill:#1a4d2e,stroke:#2d7a4a,color:#fff
+```
+
+**Reading the diagram.** Two arrows carry most of the argument. The
+dotted one — *nothing certified → auto-deny disabled* — is the path the
+system actually took at `dev` scale, and it is enforced in
+[`policy/selective.py`](src/pramaan/policy/selective.py) rather than left
+to operator discipline. The `early exit → reuse index` arrow exists
+because omitting it was a real bug: claims that exited cheaply were
+never indexed, silently blinding the reuse graph to exactly the
+high-volume attacker it is meant to catch. It is now asserted by a test
+that was verified by re-introducing the bug.
+
+Stage timings are measured on this machine, not estimated.
 
 ## Results
 
@@ -189,7 +279,9 @@ machine with real compute, not in CI.
 
 ## Architecture
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+The dataflow diagram is in [Approach](#approach) above. Module-by-module
+detail, the feature schema, and the design decisions behind each pillar
+are in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Data
 
@@ -204,7 +296,12 @@ here, in [`docs/DATA_CARD.md`](docs/DATA_CARD.md), and in the module
 docstring of `benchmarks/simulate_ledger.py`. There is no public dataset
 of refund claims with claimant history, so every claimant identity, order
 record, timestamp, and device fingerprint is synthetic, with parameters
-anchored to published rates (~15% fraud among returns, ~23% India RTO).
+anchored to the published rates in [The problem](#the-scale-from-named-sources)
+(~15% fraud among returns, per Appriss/Deloitte; ~23% India RTO, from the
+vendor-reported range whose weakness is flagged there). Anchoring a
+simulator to a number we have just called uncertain is a real limitation,
+not a detail: it means P4's measured contribution inherits that
+uncertainty.
 Only the images are real. Pillar 4 (claimant behaviour) is therefore
 evaluated entirely on simulated data and its contribution is reported
 separately from the image pillars, never blended into a single headline
@@ -226,6 +323,16 @@ end.
 ## Safety
 
 See [`SAFETY.md`](SAFETY.md) and [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+
+## Sources
+
+Figures quoted in [The problem](#the-problem), with their provenance so a
+reader can check them rather than trust them:
+
+- National Retail Federation & Happy Returns, [*2025 Retail Returns Landscape*](https://nrf.com/research/2025-retail-returns-landscape) (15 Oct 2025) — $849.9B returned, 15.8% of sales, 19.3% online return rate, 9% of returns fraudulent.
+- Appriss Retail & Deloitte, [*Consumer Returns in the Retail Industry*, 7th annual](https://apprissretail.com/news/appriss-retail-annual-research-fraudulent-returns-and-claims-cost-retailers-103b-in-2024/) (Dec 2024) — $103B fraudulent returns and claims, 15.14% of returns fraudulent; 60+ US retailers, US Census data, 150 executives, 1,000 consumers.
+- *Deccan Herald*, [seller-side returns-policy fraud ring, ₹5.5 crore](https://www.deccanherald.com/india/karnataka/bengaluru/gang-registers-as-seller-with-e-commerce-company-exploits-returns-policy-swindles-rs-5-5-crore-3302465).
+- India RTO rates: **no primary source located.** The 20–35% COD range circulates across logistics-vendor blogs without a published methodology behind it, and is marked as vendor-reported wherever this repo uses it.
 
 ## Citation
 
