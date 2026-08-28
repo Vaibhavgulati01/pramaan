@@ -22,17 +22,16 @@ portable to that VM unmodified.
 | 2 — Pillars (P3→P2→P4→P1) | ✅ done | All four pillars + rings + cost-ordered cascade; temporal-leak test verified against an injected bug |
 | 3 — Fusion & calibration | ✅ done | LightGBM + monotone constraints, Mondrian isotonic, reliability diagrams |
 | 4 — Risk control | ✅ done | LTT + certified sets, calibration seal, GUARANTEE.md with all three caveats |
-| 5 — Policy & OPE | ⬜ not started | Ends with `PREREGISTRATION.md` + `EVALUATION_PROTOCOL.md` committed |
-| 6 — Evaluation infra (smoke+dev) | ⬜ not started | |
-| 7 — Audit, federation, monitoring | ⬜ not started | Federation is kill-gated (2 attempts, concrete criteria) |
-| 8 — Product surface | ⬜ not started | API, Docker, `vhs`/`asciinema` GIF |
-| 9 — Docs, VM handoff, README | ⬜ not started | Blocked on the user running `full` scale on the VM |
+| 5 — Policy & OPE | ✅ done | Cost model, selective policy, DR-OPE, ε-exploration, label maturity; PREREGISTRATION + EVALUATION_PROTOCOL committed |
+| 6 — Evaluation infra (smoke+dev) | ✅ done | Baselines, ablations (×2 subsets), negative controls, bootstrap CIs, README generator, 2 CI gates |
+| 7 — Audit, federation, monitoring | ✅ done | Reason codes, signed evidence packs, federated index with all 4 anti-poisoning rules measured, guarantee watchdog. **Kill-gate passed.** |
+| 8 — Product surface | ✅ done | FastAPI (/adjudicate /explain /healthz), hardened multi-stage container |
+| 9 — Docs, VM handoff, README | 🚧 **blocked on the VM run** | All docs written; `docs/VM_HANDOFF.md` is the next action |
 
 ## What's implemented right now
 
-- **CLI** (`src/pramaan/cli.py`): `setup`, `data`, `data-full`, `train`
-  are real. `eval/report/serve` exist and are invocable but say "not yet
-  — lands in Phase N" (no crashes, no missing commands).
+- **CLI** (`src/pramaan/cli.py`): every command is real —
+  `setup / data / data-full / train / certify / eval / report / serve / all`.
 - **Ingest / canonicalisation** (`src/pramaan/ingest/`): phone, email,
   address (transliteration + PIN-bucketed fuzzy + numeric-token rule),
   device (feature only, not identity), identity resolution, and
@@ -50,7 +49,7 @@ portable to that VM unmodified.
   `risk.yaml` now carry real, derived numbers (not placeholders).
 - **CI**: `.github/workflows/ci.yml` — lint (ruff) + type (mypy) + tests
   (pytest) + CLI smoke, all green on every push.
-- **Tests**: 320+ across ingest, benchmarks, splits, pillars, cascade, fusion, risk, and CLI.
+- **Tests**: 514 across ingest, benchmarks, splits, pillars, cascade, fusion, risk, policy, eval, audit, federation, monitoring, API and CLI.
 
 ## Phase 1 checklist (current)
 
@@ -387,3 +386,62 @@ discovered at Phase 9.
   and re-checked in CI; `write_seal` refuses to overwrite a changed seal.
 - Verified end-to-end: an unchanged split passes, a single flipped label
   is rejected, and a seal copied between tiers is caught.
+
+
+## HANDOFF POINT — everything local is done
+
+Phases 0–8 are complete. Phase 9 needs the `full`-scale run, which needs
+the VM. **[`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md) is the complete
+runbook** — commands, expected runtimes, what to check at each step, and
+the three publishable outcomes of certification.
+
+### Why the VM is genuinely required
+
+Not convenience. At `dev` scale the calibration split held 580 claims and
+only 18 high-confidence denials, against the 45–222 the power analysis
+requires. **Nothing certified, and that was correct.** The headline claim
+is currently *unproven, not disproven*, and `full` (35,000 claims, ~7,000
+calibration) is the run that settles it.
+
+### What the VM run produces
+
+| Step | Command | ~Time |
+|---|---|---|
+| Corpus | `pramaan data-full` | 2–4 h |
+| Train | `pramaan train --scale full` | 1–2 h |
+| **Certify** | `pramaan certify --scale full` | 5 min |
+| Evaluate | `pramaan eval --scale full` | 2–4 h |
+| README | `pramaan report --scale full` | seconds |
+
+### What I still owe afterwards
+
+1. `PREREGISTRATION.md` actuals — including the misses
+2. `reports/SCALE_CONCORDANCE.md` — dev vs full, disagreement as a finding
+3. The shift-matrix driver (all eight conditions + two-experiment design exist; needs wiring to the frozen test split)
+4. README problem statement with sourced figures, and the architecture diagram
+5. A tagged release
+
+## Phases 5–8 summary
+
+**Phase 5** — cost model proving FP > FN at every order value (2.65× at
+₹500), selective policy where *the certificate constrains and cost
+chooses within it*, DR-OPE, ε-exploration with rupee cost reported,
+120-day label maturity. Two bugs found by running it: the cost-optimal
+search could not reach its own baselines, and `hb_pvalue` turned out not
+to be monotone in n — Hypothesis found the counterexample to a property
+test I had written asserting the false property.
+
+**Phase 6** — six baselines, ablations reported on both the full corpus
+and the source-controlled subset, negative controls (both PASS), bootstrap
+CIs, and a README generator whose output CI diffs against the committed
+file.
+
+**Phase 7** — templated reason codes, HMAC-signed evidence packs, the
+federated index with all four anti-poisoning rules **measured** (the
+poisoning attack is run in both directions), and the guarantee watchdog
+that widens the band rather than merely alerting.
+
+**Phase 8** — FastAPI with a response boundary that is a security
+control, asserted by `test_response_never_leaks_a_score`. Writing those
+tests caught that five of fifteen were silently skipping because
+`TestClient` only fires lifespan startup inside a context manager.
