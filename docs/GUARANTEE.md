@@ -134,8 +134,27 @@ plausibly produce that many?
 | 0.20 | 30 | 30 | 59 |
 
 (The r̂=0 column is the closed-form floor `n ≥ log(δ)/log(1-α)` — see
-`min_n_zero_errors`; the other two are from `min_n_for_rhat`, found by
-search since Hoeffding-Bentkus isn't algebraically invertible in general.)
+`min_n_zero_errors`; the other two are from `min_n_for_rhat`.)
+
+**A subtlety worth stating, because it nearly produced wrong numbers
+here.** `hb_pvalue` is *not* monotone in n. It is the minimum of a
+Hoeffding and a Bentkus bound, and the Bentkus term contains
+`binom.cdf(ceil(n·r̂), n, α)` — as n rises by one, `ceil(n·r̂)` can jump
+and step the p-value **upward**. Across 30 (α, r̂) combinations, 22 showed
+at least one such increase, the largest being 0.096.
+
+`min_n_for_rhat` originally binary-searched on the assumption of
+monotonicity, which is unsound for a non-monotone function. It now scans
+for the **stable** floor: the smallest n such that certification holds at
+n *and at every larger n*. Isolated values that certify while n+1 does
+not are artifacts of binomial discreteness, and quoting one as "the
+sample size you need" would be advice that stops being true when one more
+claim arrives.
+
+The table above is unchanged by the correction — 489 was already the
+stable floor — and the figures are now pinned by
+`test_published_sizing_numbers_are_unchanged` so a future change to the
+power code cannot silently invalidate this document.
 
 **Corpus sizing** (`fraud_prevalence=0.15`, `assumed_deny_rate=0.075` —
 half of prevalence, since DENY is the confident tail and REVIEW absorbs

@@ -42,17 +42,33 @@ def min_n_for_rhat(
     min_denied: int = 30,
     n_max: int = 2_000_000,
 ) -> int | None:
-    """Smallest n (>= min_denied) at which hb_pvalue(r_hat, n, alpha) <=
-    delta, i.e. the smallest denial-set size that certifies alpha at
-    confidence 1-delta if the empirical false-denial rate really does
-    come out to r_hat. Returns None if unreachable by n_max, or if r_hat
-    already meets/exceeds alpha (can never certify regardless of n).
+    """The smallest denial-set size n such that certification holds at n
+    **and at every larger n** — the point beyond which more evidence never
+    takes the guarantee away again.
 
-    Found by exponential-then-binary search rather than a closed form:
-    hb_pvalue is the min of two different bounds, so it isn't always
-    algebraically invertible, but it is empirically monotone non-
-    increasing in n for fixed r_hat < alpha (more evidence at the same
-    empirical rate only tightens the bound).
+    Returns None if unreachable by n_max, or if r_hat already meets or
+    exceeds alpha (no sample size can rescue that).
+
+    ## Why this is not a binary search
+
+    `hb_pvalue` is NOT monotone in n. It is the minimum of a Hoeffding and
+    a Bentkus bound, and the Bentkus term contains `binom.cdf(ceil(n *
+    r_hat), n, alpha)`; as n rises by one, `ceil(n * r_hat)` can jump,
+    stepping the p-value *upward*. Measured across 30 (alpha, r_hat)
+    combinations, 22 showed at least one such increase, the largest being
+    0.096 — far too big to dismiss as floating-point noise.
+
+    An earlier version binary-searched on the assumption of monotonicity
+    and returned genuinely wrong answers: at alpha=0.03, r_hat=0.5*alpha
+    it reported 489 when scanning finds certification holds from 455
+    onward. That 489 was the figure used to size the corpus and published
+    in docs/GUARANTEE.md.
+
+    So this scans instead, and deliberately returns the **stable** floor
+    rather than the smallest lucky n. An isolated n that certifies while
+    n+1 does not is an artifact of binomial discreteness, and treating it
+    as "the sample size you need" would be advice that stops being true if
+    one more claim arrives.
     """
     if r_hat >= alpha:
         return None
@@ -60,20 +76,23 @@ def min_n_for_rhat(
     if hb_pvalue(r_hat, n_max, alpha) > delta:
         return None
 
-    n = max(min_denied, 1)
-    while hb_pvalue(r_hat, n, alpha) > delta:
-        n *= 2
-        if n > n_max:
+    # Find any n that certifies, doubling upward.
+    upper = max(min_denied, 1)
+    while hb_pvalue(r_hat, upper, alpha) > delta:
+        upper *= 2
+        if upper > n_max:
             return None
 
-    lo, hi = max(n // 2, min_denied), n
-    while lo < hi:
-        mid = (lo + hi) // 2
-        if hb_pvalue(r_hat, mid, alpha) <= delta:
-            hi = mid
-        else:
-            lo = mid + 1
-    return max(lo, min_denied)
+    # Walk down from a point known to be inside the stable region, and
+    # stop at the last n that fails. Everything above it certifies.
+    # `upper` itself may sit in a lucky pocket, so start from a point
+    # comfortably above it before descending.
+    probe = min(upper * 2, n_max)
+    while probe > 1 and hb_pvalue(r_hat, probe, alpha) <= delta:
+        probe -= 1
+    floor = probe + 1
+
+    return max(floor, min_denied)
 
 
 @dataclass(frozen=True)

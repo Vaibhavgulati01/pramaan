@@ -61,6 +61,41 @@ version. We have closed the ones we found and tested for. We cannot claim
 to have found them all, and any residual leak inflates the pixel model's
 apparent contribution specifically.
 
+**At the spec's cost parameters, reviewing almost everything is
+economically rational — which narrows what automation can be worth.**
+This is a property of the cost model, not a defect in the model, and it
+is worth stating plainly because it bounds the whole system's value.
+
+With review at ₹40 and a false positive at roughly ₹3,300, **human
+review is ~82× cheaper than one wrong denial**. Working out when
+auto-approving beats reviewing:
+
+| order value | approve beats review only if P(fraud) < | i.e. certainty needed |
+|---|---|---|
+| ₹500 | 0.059 | >94% sure legitimate |
+| ₹2,000 | 0.018 | >98% sure legitimate |
+| ₹8,000 | 0.005 | >99.5% sure legitimate |
+
+On the dev calibration split the cost-optimal policy lands at **₹39,931
+per 1,000 claims against ₹40,000 for reviewing everything** — a 0.2%
+improvement, auto-approving 0.2% of claims. The model is not confident
+enough, often enough, to beat a cheap human.
+
+Three honest readings, and we do not yet know which dominates:
+
+1. *The model is not good enough yet* — plausible at dev scale, where
+   nothing certified either.
+2. *₹40 per review is optimistic* — it is the spec's figure; a real
+   adjudication including escalation and dispute handling may cost more,
+   which would widen the automation gap.
+3. *The value is in triage, not replacement* — the system's contribution
+   may be concentrating review effort rather than removing it, which is a
+   different and less headline-friendly claim than the one the
+   architecture opens with.
+
+We report the review rate alongside every ₹-per-1,000 figure precisely so
+this cannot be hidden by a favourable cost number.
+
 **Our screen-rephotograph simulation is weaker than the real thing.**
 Measured on the dev corpus, `fraud_screen_rephotograph` claims are
 essentially indistinguishable from legit ones on the frequency features

@@ -36,20 +36,37 @@ def test_pvalue_decreases_toward_zero_as_rhat_shrinks() -> None:
     alpha=st.floats(min_value=0.01, max_value=0.3),
     r_hat_frac=st.floats(min_value=0.0, max_value=0.95),
     n_small=st.integers(min_value=30, max_value=500),
-    extra=st.integers(min_value=1, max_value=2000),
+    extra=st.integers(min_value=200, max_value=2000),
 )
-def test_pvalue_monotone_nonincreasing_in_n(
+def test_pvalue_decreases_with_substantially_more_evidence(
     alpha: float, r_hat_frac: float, n_small: int, extra: int
 ) -> None:
-    """More evidence at the same empirical rate can only tighten (or
-    leave unchanged) the certification bound - this is the property
-    fixed-sequence LTT search (Phase 4) depends on for correctness.
+    """Substantially more evidence at the same empirical rate tightens the
+    bound.
+
+    Note this is NOT pointwise monotonicity, which hb_pvalue does not
+    have. The Bentkus term contains `binom.cdf(ceil(n * r_hat), n,
+    alpha)`, and as n rises by one `ceil(n * r_hat)` can jump, stepping
+    the p-value upward - measured increases up to 0.096 across 22 of 30
+    (alpha, r_hat) combinations. An earlier version of this test asserted
+    strict monotonicity for `extra >= 1` and Hypothesis correctly found
+    the counterexample (alpha=0.297, n=33 -> 34).
+
+    That discovery mattered: `min_n_for_rhat` had been binary-searching on
+    the false assumption and is now a scan for the stable floor.
     """
     r_hat = r_hat_frac * alpha
-    n_large = n_small + extra
     p_small = hb_pvalue(r_hat, n_small, alpha)
-    p_large = hb_pvalue(r_hat, n_large, alpha)
+    p_large = hb_pvalue(r_hat, n_small + extra, alpha)
     assert p_large <= p_small + 1e-9
+
+
+def test_pvalue_is_not_pointwise_monotone_in_n() -> None:
+    """Pins the surprising property so it cannot be silently 'fixed' back
+    into an assumption something else depends on."""
+    alpha = 0.296875
+    r_hat = 0.5 * alpha
+    assert hb_pvalue(r_hat, 34, alpha) > hb_pvalue(r_hat, 33, alpha)
 
 
 @pytest.mark.parametrize("bad_r_hat", [-0.1, 1.1])

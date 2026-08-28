@@ -32,6 +32,48 @@ def test_min_n_for_rhat_returned_n_actually_certifies() -> None:
     assert hb_pvalue(r_hat, n - 1, alpha) > delta  # n is genuinely minimal
 
 
+def test_min_n_for_rhat_returns_a_STABLE_floor() -> None:
+    """The returned n must certify, and so must every larger n.
+
+    hb_pvalue is not pointwise monotone in n (binomial discreteness in the
+    Bentkus term), so an isolated n can certify while n+1 does not.
+    Reporting such a pocket as "the sample size you need" would be advice
+    that stops being true when one more claim arrives, so the floor is
+    defined as the point beyond which certification never lapses again.
+    """
+    for alpha in (0.03, 0.05, 0.10, 0.20):
+        for fraction in (0.0, 0.3, 0.5):
+            r_hat = fraction * alpha
+            n = min_n_for_rhat(alpha, 0.10, r_hat, min_denied=1)
+            assert n is not None
+            for m in range(n, n + 250):
+                assert hb_pvalue(r_hat, m, alpha) <= 0.10, (
+                    f"alpha={alpha} r_hat={r_hat}: certification lapses at n={m}, "
+                    f"above the reported floor of {n}"
+                )
+
+
+def test_published_sizing_numbers_are_unchanged() -> None:
+    """docs/GUARANTEE.md publishes a power table and sizes the corpus from
+    it. Pinning the figures here means a change to the power code cannot
+    silently invalidate the committed document."""
+    expected = {
+        (0.03, 0.0): 76,
+        (0.03, 0.3): 222,
+        (0.03, 0.5): 489,
+        (0.05, 0.0): 45,
+        (0.05, 0.3): 131,
+        (0.10, 0.3): 64,
+        (0.10, 0.5): 134,
+    }
+    for (alpha, fraction), want in expected.items():
+        if fraction == 0.0:
+            got = min_n_zero_errors(alpha, 0.10, min_denied=1)
+        else:
+            got = min_n_for_rhat(alpha, 0.10, fraction * alpha, min_denied=1)
+        assert got == want, f"alpha={alpha} frac={fraction}: {got} != published {want}"
+
+
 def test_min_n_for_rhat_none_when_rhat_exceeds_alpha() -> None:
     assert min_n_for_rhat(0.03, 0.10, r_hat=0.05) is None
 
