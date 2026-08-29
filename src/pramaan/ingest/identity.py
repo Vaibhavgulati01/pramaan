@@ -19,10 +19,16 @@ determinism test (Phase 6).
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from pramaan.common.union_find import UnionFind
-from pramaan.ingest.address import addresses_match, canonicalize_address, canonicalize_pin
+from pramaan.ingest.address import (
+    addresses_match,
+    canonicalize_address,
+    canonicalize_pin,
+    extract_numeric_tokens,
+)
 from pramaan.ingest.email import canonicalize_email
 from pramaan.ingest.phone import canonicalize_phone
 
@@ -34,6 +40,65 @@ class ClaimIdentitySignals:
     email_raw: str | None = None
     address_raw: str | None = None
     pin_raw: str | None = None
+
+
+def _address_candidate_pairs(
+    ids: list[str], norm_addr_by_id: dict[str, str]
+) -> Iterator[tuple[str, str]]:
+    """Pairs within one PIN bucket that could possibly match.
+
+    Comparing every pair in a bucket is quadratic, and the PIN bucket is
+    not a small unit: the simulated ledger draws from **8 distinct PIN
+    codes** regardless of corpus size, so bucket size grows linearly with
+    claim count and pair count grows as N^2. Measured on the simulator:
+
+        claims    pairs        seconds
+         1,500      141,683       0.62
+         3,000      562,063       4.09
+         6,000    2,250,092      16.81
+        12,000    8,997,231      69.90
+
+    A fitted exponent of 2.27 puts the `full` tier's 35,000 claims at
+    ~13 minutes of fuzzy string matching, all of it on the critical path
+    of the corpus build.
+
+    This is a *blocking* step, and it is exact rather than heuristic:
+    `addresses_match` rejects any pair where both sides carry numeric
+    tokens that do not intersect (rule 3 in its docstring), so two
+    numbered addresses sharing no number cannot match, and skipping them
+    changes no result. Claims with no numeric token at all are exempt
+    from that rule, so they are still compared against everything in the
+    bucket.
+
+    Equivalence to the brute-force version is asserted directly, over
+    generated inputs, in `tests/test_ingest_identity.py`.
+    """
+    numeric = {cid: extract_numeric_tokens(norm_addr_by_id[cid]) for cid in ids}
+    numbered = [cid for cid in ids if numeric[cid]]
+    unnumbered = [cid for cid in ids if not numeric[cid]]
+
+    # Rule 3 never fires for these, so they keep their full comparison set.
+    for i, a in enumerate(unnumbered):
+        for b in unnumbered[i + 1 :]:
+            yield a, b
+        for b in numbered:
+            yield a, b
+
+    # Both sides numbered: only a shared number can survive rule 3.
+    by_token: dict[str, list[str]] = defaultdict(list)
+    for cid in numbered:
+        for token in numeric[cid]:
+            by_token[token].append(cid)
+
+    seen: set[tuple[str, str]] = set()
+    for bucket in by_token.values():
+        for i, a in enumerate(bucket):
+            for b in bucket[i + 1 :]:
+                # A pair sharing two numbers would otherwise be compared twice.
+                pair = (a, b) if a <= b else (b, a)
+                if pair not in seen:
+                    seen.add(pair)
+                    yield pair
 
 
 def resolve_canonical_identities(
@@ -76,17 +141,15 @@ def resolve_canonical_identities(
             uf.union(group[0], other)
 
     for ids in by_pin.values():
-        for i in range(len(ids)):
-            for j in range(i + 1, len(ids)):
-                a, b = ids[i], ids[j]
-                if addresses_match(
-                    norm_addr_by_id[a],
-                    pin_by_id[a],
-                    norm_addr_by_id[b],
-                    pin_by_id[b],
-                    address_match_threshold,
-                ):
-                    uf.union(a, b)
+        for a, b in _address_candidate_pairs(ids, norm_addr_by_id):
+            if addresses_match(
+                norm_addr_by_id[a],
+                pin_by_id[a],
+                norm_addr_by_id[b],
+                pin_by_id[b],
+                address_match_threshold,
+            ):
+                uf.union(a, b)
 
     result: dict[str, str] = {}
     for members in uf.clusters().values():

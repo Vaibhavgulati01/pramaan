@@ -159,7 +159,7 @@ declined to issue a guarantee has not demonstrated that it can.
 
 ### 12. How much of this is actually verified versus asserted?
 
-542 tests. The ones worth naming:
+557 tests. The ones worth naming:
 
 - The **temporal-leak test** was verified by deliberately re-introducing
   the leak and confirming it fails.

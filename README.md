@@ -29,7 +29,7 @@ decision rather than chosen by hand.
 ---
 
 **Status: Phases 0–8 complete; Phase 9 blocked on the full-scale run.**
-All mechanisms are built, tested (542 tests) and exercised end-to-end at
+All mechanisms are built, tested (557 tests) and exercised end-to-end at
 `dev` scale. What remains is the `full`-scale run on a larger machine —
 the runbook is [`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md), progress is
 tracked in [`PROGRESS.md`](PROGRESS.md). This README is a living document,
@@ -302,10 +302,14 @@ python scripts/render_session_gif.py assets/session.jsonl -o assets/demo.gif    
 Recording and rendering are separate so a slow run is captured once and
 can be redrawn without re-running the pipeline. Absolute paths are
 redacted at capture time.
- Full-scale reproduction
-(`make data-full && make train && make eval SCALE=full`) is documented in
-[`docs/REAL_DATA_ONRAMP.md`](docs/REAL_DATA_ONRAMP.md) and is run on a
-machine with real compute, not in CI.
+
+Full-scale reproduction is `make full` — corpus, train, **certify**,
+evaluate and report, in that order, with the scale set once. It runs on a
+machine with real compute, not in CI; the step-by-step runbook with
+expected timings and what to check at each stage is
+[`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md), and
+[`docs/REAL_DATA_ONRAMP.md`](docs/REAL_DATA_ONRAMP.md) covers swapping the
+simulated ledger for real merchant data.
 
 ## Architecture
 

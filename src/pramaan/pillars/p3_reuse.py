@@ -236,30 +236,58 @@ class VectorStore(Protocol):
 class NumpyFlatIP:
     """Default backend: exact, deterministic, no native dependency.
 
-    Vectors are appended to a list and stacked lazily, so adding is O(1)
-    and the stack is rebuilt only when a search follows new additions.
+    Rows live in a single pre-allocated buffer that doubles when full, so
+    `add` is amortised O(1) and `search` never copies.
+
+    **Why not a list plus `vstack` on demand.** That was the first
+    implementation, and it is quadratic in exactly the access pattern
+    this index is built for. `query_then_add` interleaves the two calls,
+    so every `add` invalidated the cache and every following `search`
+    re-stacked the entire index: O(N) copy per query, O(N^2) copying
+    overall, on top of the O(N^2) arithmetic that exact search genuinely
+    costs.
+
+    Measured before the fix, growing the index one claim at a time:
+
+        N        total      ms/claim
+        1,000     0.86 s      0.86
+        2,000     5.54 s      2.77
+        4,000    25.10 s      6.27
+        8,000    98.14 s     12.27
+
+    A fitted exponent of 2.28 extrapolates to ~47 minutes at the `full`
+    tier's 35,000 claims -- and `eval`'s ablations rebuild the index
+    repeatedly, so that cost is paid many times over. It was invisible at
+    `dev` scale, where the same curve is only a few seconds.
     """
+
+    #: Rows the empty buffer starts with; it doubles from here.
+    _INITIAL_CAPACITY = 1024
 
     def __init__(self, dim: int) -> None:
         self.dim = dim
-        self._rows: list[np.ndarray] = []
-        self._matrix: np.ndarray | None = None
+        self._matrix = np.empty((self._INITIAL_CAPACITY, dim), dtype=np.float32)
+        self._count = 0
 
     @property
     def ntotal(self) -> int:
-        return len(self._rows)
+        return self._count
 
     def add(self, row: np.ndarray) -> None:
-        self._rows.append(np.asarray(row, dtype=np.float32).reshape(-1))
-        self._matrix = None  # invalidate
+        if self._count == self._matrix.shape[0]:
+            # Doubling keeps the total copy cost across N adds O(N).
+            grown = np.empty((self._matrix.shape[0] * 2, self.dim), dtype=np.float32)
+            grown[: self._count] = self._matrix[: self._count]
+            self._matrix = grown
+        self._matrix[self._count] = np.asarray(row, dtype=np.float32).reshape(-1)
+        self._count += 1
 
     def search(self, query: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
-        if not self._rows:
+        if self._count == 0:
             return np.empty((1, 0), dtype=np.float32), np.empty((1, 0), dtype=np.int64)
-        if self._matrix is None:
-            self._matrix = np.vstack(self._rows)
+        live = self._matrix[: self._count]
 
-        sims = (np.asarray(query, dtype=np.float32).reshape(1, -1) @ self._matrix.T)[0]
+        sims = (np.asarray(query, dtype=np.float32).reshape(1, -1) @ live.T)[0]
         k = min(k, sims.shape[0])
         # argpartition then sort the top-k: O(n) rather than O(n log n),
         # with a stable tiebreak on index so results are reproducible.

@@ -1,31 +1,75 @@
-# Fusion model + calibration (§4 L2). Filled in for real in Phase 3.
-lightgbm:
-  # Determinism (see docs/EVALUATION_PROTOCOL.md): pinned single-threaded
-  # so the `dev`-scale determinism test (two runs -> byte-identical
-  # metrics.json) is meaningful rather than flaky.
+# Fusion model, calibration and reuse-index settings.
+#
+# ─────────────────────────────────────────────────────────────────────
+# READ THIS FIRST: nothing loads this file.
+#
+# Unlike configs/{data,costs,risk}.yaml — each of which has a real loader
+# (cli.py, CostModel.from_yaml, certify_pipeline) — these values live in
+# Python. This file is a *record* of them, not a control surface. Editing
+# a number here changes nothing.
+#
+# It is kept, rather than deleted, because a single place to read the
+# model's operating parameters is genuinely useful. It is pinned by
+# `tests/test_config_matches_code.py`, so it cannot drift from the code
+# the way it already did once: before Phase 9 it advertised
+# `min_cell_size: 50` against a real value of 20, an empty monotone
+# constraint list against 11 applied constraints, and an `hnsw_flat`
+# index backend that was never implemented. `docs/VM_HANDOFF.md` told the
+# reader to edit that last one to switch backends on the VM — an
+# instruction that would have silently done nothing.
+#
+# To actually change any of these, edit the Python constant named beside
+# it and update this file to match; the test will tell you if you forget.
+# ─────────────────────────────────────────────────────────────────────
+
+lightgbm: # src/pramaan/fusion/model.py :: FusionConfig
+  num_leaves: 31
+  learning_rate: 0.05
+  n_estimators: 300
+  min_child_samples: 20
+  seed: 1337
+  n_folds: 5 # cross-fitting; OOF predictions train the calibrator
+  objective: binary
+
+  # Determinism block — all four are required together, and the
+  # byte-identical-metrics test in Phase 6 depends on them.
   num_threads: 1
   deterministic: true
   force_row_wise: true
-  seed: 1337
-  objective: binary
-  # Monotone constraints go on the 9 features with an a-priori known
-  # direction (e.g. n_distinct_claimants_sharing image UP => risk UP;
-  # days_account_age UP => risk DOWN). Exact feature list lands with the
-  # ~60-dim schema in Phase 3 (src/pramaan/fusion/schema.py).
-  monotone_constraints_features: []
 
-calibration:
+  # Applied from the schema, not from this file: the direction of each
+  # constraint is a property of the feature and belongs next to its
+  # definition. src/pramaan/fusion/schema.py :: monotone_constraint_vector
+  monotone_constraints_applied: 11 # of 48 features
+  monotone_constraints_method: advanced
+
+calibration: # src/pramaan/fusion/calibration.py
   method: mondrian_isotonic
   group_by: [category, price_band]
-  min_cell_size: 50 # below this, shrink toward the global isotonic calibrator
-  ece_bins: 10
+  min_cell_size: 20 # MIN_CELL_SIZE — below this, shrink toward global
+  min_group_size: 30 # evaluate_calibration(min_group_size=...)
+  ece_bins: 10 # equal-MASS bins, not equal-width
 
-reuse_index:
-  # IndexFlatIP is exact/deterministic and fast enough below ~50k vectors
-  # (smoke/dev). IndexHNSWFlat is reserved for `full` on the VM.
-  smoke: { type: flat_ip }
-  dev: { type: flat_ip }
-  full: { type: hnsw_flat, ef_construction: 200, m: 32 }
-  phash_bits: 64
-  lsh_bands: 16
-  lsh_band_bits: 4
+reuse_index: # src/pramaan/pillars/p3_reuse.py
+  # Two backends exist, both exact and both returning identical results
+  # (asserted by test_numpy_backend_matches_faiss_exactly):
+  #
+  #   numpy  — the default. No native dependency, and it avoids the
+  #            faiss-cpu/torch OpenMP collision that aborts on Windows.
+  #   faiss  — IndexFlatIP, single-threaded. Opt-in via
+  #            `TemporalReuseIndex(vector_backend="faiss")`.
+  #
+  # There is no approximate/HNSW backend, and at `full` scale there is no
+  # case for one. Exact search over 35,000 x 512 vectors, growing one
+  # claim at a time, measures at ~0.8 minutes end to end — see the
+  # docstring on NumpyFlatIP. An approximate index would trade that for
+  # order-sensitive, non-reproducible results.
+  backend: numpy
+  phash_bits: 64 # DEFAULT_PHASH_BITS
+  lsh_bands: 16 # DEFAULT_LSH_BANDS
+  lsh_band_bits: 4 # DEFAULT_BAND_BITS
+
+  # Set by a claim-level sweep against ground truth on the dev corpus;
+  # the table of measured operating points is in p3_reuse.py.
+  hamming_threshold: 2 # DEFAULT_HAMMING_THRESHOLD
+  clip_threshold: 0.98 # DEFAULT_CLIP_THRESHOLD

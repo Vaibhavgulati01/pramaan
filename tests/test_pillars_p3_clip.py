@@ -330,3 +330,83 @@ def test_candidate_count_is_tracked_but_not_a_model_feature() -> None:
     )
     assert features.n_candidates_examined == 1  # still measured
     assert "reuse_n_candidates_examined" not in features.as_dict()  # not fed to the model
+
+
+def test_search_does_not_rebuild_the_index_buffer() -> None:
+    """The reuse index must not be quadratic in the query_then_add pattern.
+
+    The original backend kept rows in a list and `vstack`ed them on
+    demand, invalidating the cache on every `add`. Because
+    `query_then_add` interleaves add and search, every query re-copied
+    the whole index. Measured growth was O(N^2.28): ~1 s at 1,000 claims
+    but an extrapolated ~47 minutes at the `full` tier's 35,000, paid
+    again for every ablation that rebuilds the index.
+
+    Asserting wall-clock here would be flaky on shared CI, so this pins
+    the structural property instead: searching never reallocates, and
+    adding reallocates only on a doubling boundary.
+    """
+    from pramaan.pillars.p3_reuse import NumpyFlatIP
+
+    rng = np.random.default_rng(11)
+    store = NumpyFlatIP(8)
+    rows = rng.standard_normal((300, 8)).astype(np.float32)
+
+    reallocations = 0
+    previous = store._matrix
+    for i, row in enumerate(rows):
+        if i:
+            store.search(row, k=3)
+            assert store._matrix is previous, (
+                "search reallocated the index buffer; that is the O(N^2) bug"
+            )
+        store.add(row)
+        if store._matrix is not previous:
+            reallocations += 1
+            previous = store._matrix
+
+    assert store.ntotal == len(rows)
+    # 300 rows from a 1024-row initial buffer: no growth needed at all.
+    assert reallocations == 0, f"unexpected reallocation(s): {reallocations}"
+
+
+def test_index_buffer_grows_by_doubling() -> None:
+    """Growth must be geometric, or `add` is O(N) and we are back to O(N^2)."""
+    from pramaan.pillars.p3_reuse import NumpyFlatIP
+
+    store = NumpyFlatIP(4)
+    store._matrix = np.empty((2, 4), dtype=np.float32)  # shrink to exercise growth
+    store._count = 0
+
+    capacities = [store._matrix.shape[0]]
+    rng = np.random.default_rng(3)
+    for row in rng.standard_normal((64, 4)).astype(np.float32):
+        store.add(row)
+        if store._matrix.shape[0] != capacities[-1]:
+            capacities.append(store._matrix.shape[0])
+
+    # 64 rows into a capacity-2 buffer: the last add fits, so growth stops at 64.
+    assert capacities == [2, 4, 8, 16, 32, 64], capacities
+    assert store.ntotal == 64
+
+
+def test_growth_preserves_every_row_exactly() -> None:
+    """Reallocation must copy, not truncate or reorder."""
+    from pramaan.pillars.p3_reuse import NumpyFlatIP
+
+    rng = np.random.default_rng(5)
+    rows = rng.standard_normal((200, 6)).astype(np.float32)
+    rows /= np.linalg.norm(rows, axis=1, keepdims=True)
+
+    store = NumpyFlatIP(6)
+    store._matrix = np.empty((2, 6), dtype=np.float32)
+    store._count = 0
+    for row in rows:
+        store.add(row)
+
+    # Every original row must still be retrievable as its own nearest
+    # neighbour, at index i, after many reallocations.
+    for i, row in enumerate(rows):
+        sims, idx = store.search(row, k=1)
+        assert idx[0][0] == i, f"row {i} lost or reordered by buffer growth"
+        assert sims[0][0] == pytest.approx(1.0, abs=1e-5)

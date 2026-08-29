@@ -49,7 +49,7 @@ portable to that VM unmodified.
   `risk.yaml` now carry real, derived numbers (not placeholders).
 - **CI**: `.github/workflows/ci.yml` — lint (ruff) + type (mypy) + tests
   (pytest) + CLI smoke, all green on every push.
-- **Tests**: 542 across ingest, benchmarks, splits, pillars, cascade, fusion, risk, policy, eval, audit, federation, monitoring, API and CLI.
+- **Tests**: 557 across ingest, benchmarks, splits, pillars, cascade, fusion, risk, policy, eval, audit, federation, monitoring, API and CLI.
 
 ## Phase 1 checklist (current)
 
@@ -446,6 +446,15 @@ agent and are recorded here so they are not a silent omission:
   and `eval`, so `pramaan data` failed for anyone who installed rather
   than cloned. CI now runs the console script from outside the source
   tree so the checkout cannot stand in for the distribution.
+- **Pre-transfer sanity sweep**, deliberately rather than by accident.
+  Five more defects found and fixed: `configs/model.yaml` was read by
+  nothing yet the VM runbook told you to edit it (and it named an index
+  backend that did not exist); the reuse index and entity resolution were
+  each quadratic in their own access pattern, together ~60 minutes of
+  avoidable work at `full` scale; the documented `make` chain trained at
+  the wrong scale and omitted `certify` entirely; and the Dockerfile
+  silently rebuilt the packaging bug. All in
+  [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
 - **The test suite no longer starts a web server.** One test invoked
   `pramaan serve`, which blocks on `uvicorn.run()`; whether the suite
   finished depended on port 8000 being occupied. The same test ran a full

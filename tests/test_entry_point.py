@@ -43,6 +43,7 @@ def _console_script() -> str | None:
 
 
 CONSOLE_SCRIPT = _console_script()
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def _run(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -100,3 +101,41 @@ def test_console_script_subcommands_are_wired(tmp_path: Path) -> None:
             f"`pramaan {command} --help` failed outside the repo:\n{proc.stderr}"
         )
         assert "ModuleNotFoundError" not in proc.stderr
+
+
+def test_dockerfile_copies_every_declared_package() -> None:
+    """The image must contain what pyproject.toml says it ships.
+
+    This drifted the moment `benchmarks` and `eval` were added to
+    `[tool.hatch.build.targets.wheel]`: the Dockerfile still copied only
+    `src`, and hatchling **silently skips** a declared package whose
+    directory is absent rather than failing. So `docker build` succeeded
+    and produced an image whose `pramaan` could not import its own
+    modules -- the same bug the packaging fix had just closed, shipped
+    again through a different door.
+    """
+    import tomllib
+
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    declared = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    # Only the builder stage matters; that is where pip install runs.
+    builder = dockerfile.split("FROM python:3.13-slim\n")[0]
+
+    for package in declared:
+        top = package.split("/")[0] if "/" in package else package
+        assert f"COPY {package}" in builder or f"COPY {top}" in builder, (
+            f"pyproject declares package {package!r} but the Dockerfile's builder "
+            f"stage never COPYs it. hatchling will skip it without error and the "
+            f"image will ship a broken install."
+        )
+
+
+def test_declared_packages_exist_on_disk() -> None:
+    """A declared package that does not exist is skipped, not reported."""
+    import tomllib
+
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    for package in pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]:
+        assert (ROOT / package).is_dir(), f"declared package {package!r} does not exist"

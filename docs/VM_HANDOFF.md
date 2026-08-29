@@ -68,22 +68,32 @@ pip install -e ".[dev,provenance]"
 pramaan setup          # verifies every dependency imports
 ```
 
-**On Linux, switch the vector backend to FAISS.** The default is NumPy
-because `faiss-cpu` and `torch` each bundle an OpenMP runtime and abort
-on import together on Windows. That conflict does not exist on Linux, and
-at 35k vectors FAISS's `IndexHNSWFlat` is worth having:
+**No backend switch is needed, and an earlier version of this document
+was wrong to ask for one.** It told you to edit `configs/model.yaml` to
+select an `hnsw_flat` index for the `full` tier. Three things were wrong
+with that: nothing loads `configs/model.yaml`, no HNSW backend exists,
+and at this scale none is warranted. Following the instruction would have
+changed nothing, silently, while leaving you believing the index had been
+swapped.
 
-```yaml
-# configs/model.yaml — already set for the full tier
-reuse_index:
-  full: { type: hnsw_flat, ef_construction: 200, m: 32 }
-```
+What is actually true: two backends exist, both **exact**, and they
+return identical results (`test_numpy_backend_matches_faiss_exactly`).
+NumPy is the default and needs no native library. FAISS `IndexFlatIP` is
+opt-in via `TemporalReuseIndex(vector_backend="faiss")` and is safe on
+Linux, where the `faiss-cpu`/`torch` OpenMP collision that forced the
+NumPy default on Windows does not arise.
 
-> ⚠️ **Determinism caveat.** HNSW is an approximate index and its
-> construction is order-sensitive. Using it means the `full` run is *not*
-> byte-reproducible in the way `dev` is. If exact reproducibility matters
-> more than speed, force `type: flat_ip` — at 35k vectors an exact
-> matmul is still perfectly tractable on this hardware.
+Neither is a bottleneck. Exact search over 35,000 × 512 vectors, grown
+one claim at a time in the `query_then_add` pattern the index actually
+uses, measures at **~0.8 minutes** end to end. Leave it on the default.
+
+> This was worth measuring rather than assuming. The same benchmark, run
+> against the index as it stood before Phase 9, extrapolated to **~47
+> minutes** — the backend kept its rows in a list and re-stacked the
+> whole index on every query, which is quadratic in exactly this access
+> pattern and was invisible at `dev` scale. `eval`'s ablations rebuild
+> the index repeatedly, so that cost would have been paid many times
+> over. Fixed, and pinned by a structural test rather than a timing one.
 
 ---
 
@@ -110,7 +120,7 @@ this table — it is `simulate_ledger` plus the sizing arithmetic in
 |---|---|---|
 | Claims | 3,000 | 35,000 |
 | Distinct non-synthetic image groups | 2,626 | **30,662** |
-| ABO images downloaded | 2,889 | **33,738** |
+| ABO images downloaded | 2,889 | **33,703** |
 | GenImage "Real" images | 1,213 | **12,284** |
 | GenImage per AI family (min) | 75 | **975** × 7 families |
 | Synthetic-fraud claims | 144 | 2,052 |
@@ -124,13 +134,31 @@ The ~33,700 ABO fetches are individually small (~16 KB each) but numerous
 — this is the step most likely to be slow on a poor connection, and it is
 the reason the estimate below is dominated by network rather than CPU.
 
+**The pre-fetch stages have already been run at `full` scale on the dev
+machine**, up to the point where the download starts. So these are
+measured expectations, not guesses — anything materially different is
+worth stopping for:
+
+```
+INFO simulating ledger: n_claims=35000 merchants=3 seed=1337
+INFO reconciling splits
+INFO Reconciliation: dropped 39 claim(s) (0.111%) from 28 cross-split
+     component(s); 35000 -> 34961.
+INFO split verification: OK: all 4 split constraints hold.
+INFO fetching source images (abo=33703, genimage>=975/family)
+```
+
 **Check when it finishes:**
 
-- [ ] `split verification: OK (generator-holdout, temporal, entity, ring)`
-- [ ] fraud prevalence ≈ 0.15
-- [ ] `reconciliation: N claim(s) dropped` — N should be well under 0.1%.
-      A large number means the entity matcher is over-merging at scale
-      and is worth investigating before trusting anything downstream.
+- [ ] `split verification: OK: all 4 split constraints hold.`
+- [ ] `Reconciliation: dropped 39 claim(s) (0.111%)` — expect exactly
+      this, since the ledger is seeded. An earlier draft of this document
+      told you to expect "well under 0.1%", which the real run would have
+      tripped on a non-problem. A *much* larger number would mean the
+      entity matcher is over-merging at scale; 39 is the irreducible
+      residue described in `docs/LIMITATIONS.md`.
+- [ ] `abo=33703, genimage>=975/family` — the derived pool sizes.
+- [ ] final corpus is 34,961 claims, fraud prevalence ≈ 0.15
 - [ ] Disk: expect ~15–25 GB under `data/`.
 
 **If the GenImage fetch stalls:** it reads ~100 MB parquet row groups
@@ -263,14 +291,50 @@ earlier would mean writing about results that do not yet exist:
 | | |
 |---|---|
 | Phases complete | 0 through 8 |
-| Tests | 542, all passing |
+| Tests | 557, all passing |
 | Lint / types | ruff + mypy clean |
 | CI | `ci.yml` and `leakage.yml` green |
 | `dev` corpus | 3,000 claims, all four split constraints verified |
 | `dev` certificate | nothing certified — correctly, on power grounds |
 | Entry point | installed `pramaan` script, verified from outside the source tree |
 | `pramaan all` | runs all five stages (it did not, until Phase 9 — see `LIMITATIONS.md`) |
+| Clean install | wheel built and installed into an empty venv; every subcommand runs from a directory with no source tree |
+| Determinism | full `dev` rebuild → retrain → recertify → re-eval reproduced `metrics.json` and `certificate.json` byte-identically, apart from wall-clock |
+| Reuse index at scale | measured, not assumed: ~0.8 min for 35,000 × 512 exact, `query_then_add` |
+| Entity resolution at scale | ~5 s at 35,000 (was ~13 min); `dev` corpus rebuilds byte-identically |
+| `full` pre-flight | ledger, reconciliation and split verification **actually run at 35,000**; only the download is untried |
 | Blocking on | this document |
+
+### Pre-transfer sweep
+
+Everything below was run against this commit before handoff. At `full`
+scale, everything up to the source download has been executed too — the
+ledger simulation, split reconciliation and all four split-constraint
+checks — so the only genuinely untried part is the download itself and
+what follows it.
+
+| Check | Result |
+|---|---|
+| `pramaan all --scale dev`, end to end | exit 0, all five stages |
+| `dev` determinism | `metrics.json` + `certificate.json` byte-identical across a full rebuild |
+| `dev` corpus determinism | manifest byte-identical after the entity-resolution rewrite |
+| `pramaan all --scale smoke` | exit 0, README correctly left untouched |
+| Wheel contents | ships `pramaan`, `benchmarks`, `eval` + console script |
+| Clean-venv install from wheel | all runtime modules import outside the repo |
+| Config ↔ code consistency | pinned by `tests/test_config_matches_code.py` |
+| Dockerfile ↔ declared packages | pinned by `tests/test_entry_point.py` |
+| Linux portability | no platform branches, no `os.path.join`, pathlib throughout |
+| Doc links and anchors | 63 resolve |
+| Image licence allowlist | clean |
+| Tests | 557, 0 failures |
+
+**Five defects this sweep found and fixed** are written up in
+[`LIMITATIONS.md`](LIMITATIONS.md): a config file nothing read that this
+runbook told you to edit, two separate quadratics (the reuse index and
+entity resolution, together ~60 minutes of avoidable work at `full`
+scale), a documented `make` chain that trained at the wrong scale and
+skipped `certify` entirely, and a Dockerfile that silently rebuilt the
+packaging bug. Four would have cost VM time; one would have cost trust.
 
 **Before the first full run, install from a clean environment and check
 the console script works there**, rather than relying on a checkout:

@@ -67,6 +67,76 @@ no change to the code under test. Both are fixed — the repo root is
 redirected to an empty directory so the no-corpus branch is
 deterministic, and `uvicorn.run` is stubbed.
 
+### The pre-transfer sweep, and what a deliberate audit found
+
+The four above were found by accident. Before handing off to the VM I
+ran a deliberate sweep instead, and it found five more — which is the
+clearest evidence that "found by accident" was not a good enough process.
+
+**`configs/model.yaml` was decoration, and the runbook told you to edit
+it.** Unlike `data.yaml`, `costs.yaml` and `risk.yaml`, each of which has
+a real loader, nothing anywhere read `model.yaml`. It also disagreed with
+the code it claimed to describe — `min_cell_size: 50` against a real 20,
+an empty monotone-constraint list against 11 applied — and it named an
+index backend, `hnsw_flat`, that **was never implemented**.
+`docs/VM_HANDOFF.md` instructed the reader to select that backend on the
+VM. Following the runbook would have changed nothing, silently, while
+leaving you believing the index had been swapped. The file is now an
+accurate record, pinned to the code by
+`tests/test_config_matches_code.py`, and the runbook says what is
+actually true.
+
+**The reuse index was quadratic in its own access pattern.** The default
+vector store kept rows in a list and re-`vstack`ed the whole index on
+every search. `query_then_add` interleaves the two, so each query copied
+the entire index. Measured growth was O(N^2.28) — about a second at
+1,000 claims, extrapolating to **~47 minutes** at the `full` tier's
+35,000, paid again for every ablation that rebuilds the index. It is now
+a doubling buffer: the same benchmark extrapolates to **~0.8 minutes**,
+and the exact-match test against FAISS still passes unchanged.
+
+**Entity resolution was quadratic too, for a reason worth stating.**
+Address matching compares claims pairwise *within a PIN bucket*, which
+sounds like blocking but is not: the simulated ledger draws from **8
+distinct PIN codes at any corpus size**, so bucket size grows linearly
+with claims and comparisons grow as N^2. Measured at O(N^2.27) — 64 s at
+12,000 claims, extrapolating to ~13 minutes at 35,000, on the critical
+path of the corpus build.
+
+Fixed by blocking on numeric tokens, which is exact rather than
+heuristic: `addresses_match` already rejects any pair whose numeric
+tokens both exist and do not intersect, so those pairs cannot match and
+skipping them changes nothing. Unnumbered addresses are exempt from that
+rule and keep their full comparison set. Result: 82× faster at 12,000,
+~5 s extrapolated at 35,000, and the **entire `dev` corpus manifest
+rebuilds byte-identically** — every entry, the reconciliation, the split
+verification. Equivalence is also asserted directly against the
+brute-force implementation over generated collision-heavy inputs.
+
+Both quadratics share a shape worth naming: an operation that looks
+bounded because it is scoped to a bucket, where the number of buckets is
+fixed and so the bucket *is* the corpus. Neither was visible at `dev`
+scale, and neither would have been caught by any test we had, because
+the tests assert correctness and these were never wrong — only slow.
+
+**The documented full-scale command was wrong twice.** `make data-full &&
+make train && make eval SCALE=full` would have built a full corpus,
+trained a **dev** model (SCALE defaults to `dev`), then evaluated at full
+against it — and `certify`, the step the entire guarantee rests on, had
+no Makefile target at all and was simply absent from the chain. Replaced
+by a single `make full` that sets the scale once and includes certify.
+
+**The Docker image shipped the packaging bug after it was fixed.** The
+Dockerfile copied only `src`, while `pyproject.toml` now declares
+`benchmarks` and `eval` as packages. Hatchling **skips a declared package
+whose directory is absent rather than failing**, so `docker build`
+succeeded and produced an image whose `pramaan` could not import its own
+modules. A build-time import check and a test now close that door.
+
+Four of these five would have cost VM time rather than correctness. The
+`model.yaml`/HNSW one would have cost trust: the run would have
+completed, and the record of how it was configured would have been false.
+
 **What we are not claiming.** This class is not closed. These three were
 found by accident, not by a systematic audit, and the honest lesson is
 that a green CI badge measured our environment rather than our artifact
