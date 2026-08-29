@@ -12,7 +12,7 @@ finish.
 
 ---
 
-## 0. Why `full` matters, in one paragraph
+## Why `full` matters, in one paragraph
 
 At `dev` scale **no α/δ rung certified**, and that was the correct
 answer: the calibration split held 580 claims and only 18 high-confidence
@@ -23,13 +23,49 @@ disproven**. `full` is the run that settles it.
 
 ---
 
+## 0. What to copy from the dev machine
+
+**Nothing.** This is worth stating explicitly, because "transfer the
+data to the VM" is the natural assumption and it would be wasted effort.
+
+| Thing | How the VM gets it | Transfer? |
+|---|---|---|
+| Source code, configs, `Makefile` | `git clone` — the repo is public | no |
+| `reports/dev/*` (metrics, certificate, seal) | committed in the repo | no |
+| ABO product photos | fetched from Hugging Face by `benchmarks/sources.py` | no |
+| GenImage-derived images | same, public HF repo | no |
+| CLIP ViT-B/32 weights | `open_clip` downloads on first use (~350 MB) | no |
+| `data/` (corpus, features, models) | **rebuilt** by `pramaan data-full` | no |
+| Credentials / API keys | none exist — no `.env`, no HF token needed | n/a |
+
+`data/` is gitignored in full and every byte of it is derived: the
+manifest records each claim's upstream source, licence, source SHA256,
+transform and output SHA256, so the corpus is rebuildable rather than
+shippable. That is a deliberate property — see `docs/DATA_CARD.md` — and
+it is also why no NC-licensed image is ever committed to this public
+repo. Copying `data/` across would move ~700 MB of files the VM will
+regenerate anyway, at a different and larger scale.
+
+**One optional shortcut.** Copying `data/raw/` (602 MB) pre-seeds the
+download cache, saving the VM from re-fetching the ~5,300 source images
+`dev` already pulled. It is resumable and additive, so this only helps if
+bandwidth is scarce; the `full` build still has to fetch roughly six
+times that much on top. Skip it unless the connection is slow.
+
+**What comes back the other way**, once the run finishes: `reports/full/`
+(metrics, certificate, calibration seal, figures), the regenerated
+`README.md`, and the run logs. Those are small and they are the actual
+product of the VM run. Do not copy `data/full/` back.
+
+---
+
 ## 1. Setup (~10 minutes)
 
 ```bash
 git clone https://github.com/Vaibhavgulati01/pramaan && cd pramaan
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,provenance]"
-python -m pramaan.cli setup          # verifies every dependency imports
+pramaan setup          # verifies every dependency imports
 ```
 
 **On Linux, switch the vector backend to FAISS.** The default is NumPy
@@ -54,13 +90,39 @@ reuse_index:
 ## 2. Build the corpus (~2–4 hours, mostly network)
 
 ```bash
-python -m pramaan.cli data-full 2>&1 | tee logs/data_full.log
+pramaan data-full 2>&1 | tee logs/data_full.log
 ```
 
 **What it does:** simulates 35,000 claims, fetches ABO and GenImage
 sources (cached under `data/raw/`, resumable), applies per-class
 transforms, reconciles and verifies all four split constraints, and
 writes a manifest with per-claim provenance.
+
+**What it will actually ask the network for.** Pool sizes are derived
+from *distinct image groups*, not claim count — sources are drawn
+without replacement, so under-provisioning would manufacture duplicate
+"legit" claims that P3 then reports as reuse. Computed by running the
+ledger simulation for the `full` tier (no network needed to reproduce
+this table — it is `simulate_ledger` plus the sizing arithmetic in
+`build_bench.py`):
+
+| Quantity | `dev` (built) | `full` (to build) |
+|---|---|---|
+| Claims | 3,000 | 35,000 |
+| Distinct non-synthetic image groups | 2,626 | **30,662** |
+| ABO images downloaded | 2,889 | **33,738** |
+| GenImage "Real" images | 1,213 | **12,284** |
+| GenImage per AI family (min) | 75 | **975** × 7 families |
+| Synthetic-fraud claims | 144 | 2,052 |
+
+So the `full` build needs roughly **12× the source imagery** of `dev`.
+`data/raw/` currently holds 602 MB for `dev`; budget **6–8 GB** for the
+`full` pools and **15–25 GB** for `data/` overall once the corpus and
+cached features are written.
+
+The ~33,700 ABO fetches are individually small (~16 KB each) but numerous
+— this is the step most likely to be slow on a poor connection, and it is
+the reason the estimate below is dominated by network rather than CPU.
 
 **Check when it finishes:**
 
@@ -80,7 +142,7 @@ same command and it continues from the cache.
 ## 3. Train (~1–2 hours, GPU-accelerated for CLIP)
 
 ```bash
-python -m pramaan.cli train --scale full 2>&1 | tee logs/train_full.log
+pramaan train --scale full 2>&1 | tee logs/train_full.log
 ```
 
 Feature extraction dominates (~35k images through CLIP + forensics).
@@ -99,7 +161,7 @@ CLIP uses CUDA automatically when available.
 ## 4. Certify — **the moment that matters** (~5 minutes)
 
 ```bash
-python -m pramaan.cli certify --scale full 2>&1 | tee logs/certify_full.log
+pramaan certify --scale full 2>&1 | tee logs/certify_full.log
 ```
 
 This consumes the calibration split **once**, seals its content hash, and
@@ -128,7 +190,7 @@ asserted.
 ## 5. Evaluate (~2–4 hours; ablations refit the model repeatedly)
 
 ```bash
-python -m pramaan.cli eval --scale full 2>&1 | tee logs/eval_full.log
+pramaan eval --scale full 2>&1 | tee logs/eval_full.log
 ```
 
 Runs baselines, both ablation variants, negative controls, bootstrap CIs
@@ -152,8 +214,8 @@ controls; run those separately afterwards.
 ## 6. Generate the README and commit
 
 ```bash
-python -m pramaan.cli report --scale full
-python -m pramaan.cli report --scale full --check   # must pass
+pramaan report --scale full
+pramaan report --scale full --check   # must pass
 git add reports/full README.md
 git commit -m "Full-scale results"
 ```
@@ -201,9 +263,24 @@ earlier would mean writing about results that do not yet exist:
 | | |
 |---|---|
 | Phases complete | 0 through 8 |
-| Tests | 514, all passing |
+| Tests | 542, all passing |
 | Lint / types | ruff + mypy clean |
 | CI | `ci.yml` and `leakage.yml` green |
 | `dev` corpus | 3,000 claims, all four split constraints verified |
 | `dev` certificate | nothing certified — correctly, on power grounds |
+| Entry point | installed `pramaan` script, verified from outside the source tree |
+| `pramaan all` | runs all five stages (it did not, until Phase 9 — see `LIMITATIONS.md`) |
 | Blocking on | this document |
+
+**Before the first full run, install from a clean environment and check
+the console script works there**, rather than relying on a checkout:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,provenance]"
+cd /tmp && pramaan setup && cd -   # must pass from outside the repo
+```
+
+This is not ceremony. The wheel shipped without `benchmarks` and `eval`
+for eight phases, and nothing noticed because every invocation happened
+from the repo root.

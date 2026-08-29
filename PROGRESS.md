@@ -49,7 +49,7 @@ portable to that VM unmodified.
   `risk.yaml` now carry real, derived numbers (not placeholders).
 - **CI**: `.github/workflows/ci.yml` — lint (ruff) + type (mypy) + tests
   (pytest) + CLI smoke, all green on every push.
-- **Tests**: 514 across ingest, benchmarks, splits, pillars, cascade, fusion, risk, policy, eval, audit, federation, monitoring, API and CLI.
+- **Tests**: 542 across ingest, benchmarks, splits, pillars, cascade, fusion, risk, policy, eval, audit, federation, monitoring, API and CLI.
 
 ## Phase 1 checklist (current)
 
@@ -424,7 +424,36 @@ Genuinely blocked on `full` — each needs numbers that do not exist yet:
    creates)
 4. A tagged release, once the README carries `full` numbers
 
+**Needs a human, not compute** — these were always out of scope for an
+agent and are recorded here so they are not a silent omission:
+
+5. **Hugging Face Spaces deploy.** The FastAPI app (`pramaan serve`) and
+   the `Dockerfile` are ready; deploying needs an HF account and a
+   token. Nothing in the codebase blocks it.
+6. **A UI screen capture.** The terminal recording at the top of the
+   README is automated and committed; a browser capture of the served
+   interface needs someone at a screen. The demo GIF is deliberately a
+   terminal session and not a mocked-up UI.
+
 **Done since, and no longer waiting on the VM:**
+
+- **`pramaan all` now actually runs all five stages.** It had been
+  skipping certify, eval and report since Phase 6, via a leftover
+  "not implemented yet" stub, with CI green throughout. See
+  [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) — grouped there with two
+  other bugs of the same shape.
+- **The installed package works.** The wheel had omitted `benchmarks`
+  and `eval`, so `pramaan data` failed for anyone who installed rather
+  than cloned. CI now runs the console script from outside the source
+  tree so the checkout cannot stand in for the distribution.
+- **The test suite no longer starts a web server.** One test invoked
+  `pramaan serve`, which blocks on `uvicorn.run()`; whether the suite
+  finished depended on port 8000 being occupied. The same test ran a full
+  real `dev` pipeline (and rewrote the README) on any machine that had a
+  corpus.
+- **Demo GIF** at the top of the README: a real recording of
+  `pramaan all --scale smoke`, captured and rendered by two committed
+  scripts (`vhs`/`asciinema` both need a Unix pty and do not run here).
 
 - README problem statement, with figures attributed to NRF/Happy Returns
   and Appriss/Deloitte — including the fact that those two sources

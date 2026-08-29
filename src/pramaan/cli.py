@@ -39,14 +39,6 @@ class Scale(str, Enum):
 DEFAULT_SEED = 1337
 
 
-def _pending(command: str, phase: str) -> None:
-    typer.echo(
-        f"`pramaan {command}` is not implemented yet - it lands in {phase}. "
-        "See PROGRESS.md / PRAMAAN_v2_architecture.md Sec.9 for the build order.",
-        err=True,
-    )
-
-
 # Each command below is a thin @app.command wrapper over a plain `_run_*`
 # / `_build_*` function. `all` composes those plain functions, never the
 # wrappers: calling a Typer command as an ordinary Python function passes
@@ -376,13 +368,38 @@ def all_(
     # invoking a Typer command as an ordinary function passes its
     # `typer.Option(...)` sentinels through as real argument values
     # instead of their defaults.
-    _run_setup()
-    _build_corpus(scale.value, seed)
+    smoke = scale is Scale.smoke
     # smoke keeps CLIP off: the embedding dominates runtime and the tier
     # exists to prove the pipeline executes, not to produce numbers.
-    _run_train(scale.value, use_clip=(scale is not Scale.smoke))
-    _pending(f"eval --scale {scale.value}", "Phase 6")
-    _pending(f"report --scale {scale.value}", "Phase 6")
+    use_clip = not smoke
+
+    _run_setup()
+    _build_corpus(scale.value, seed)
+    _run_train(scale.value, use_clip=use_clip)
+    _run_certify(scale.value, use_clip=use_clip)
+    _run_eval(
+        scale.value,
+        use_clip=use_clip,
+        # Sec.6 asks for 2000 resamples at reporting scale. smoke exists to
+        # prove the pipeline executes inside a CI budget, and refitting the
+        # model for every ablation is what makes it slow.
+        n_resamples=200 if smoke else 2000,
+        skip_slow=smoke,
+    )
+
+    # `report` rewrites README.md in place from reports/<tier>/metrics.json.
+    # At smoke that would publish CI-budget numbers as the project's
+    # headline, which the reporting contract in docs/EVALUATION_PROTOCOL.md
+    # forbids outright -- so the stage is skipped rather than run and
+    # reverted. Everything upstream of it has already executed.
+    if smoke:
+        typer.echo(
+            "\nSkipping `report`: it would inject smoke-tier numbers into README.md, "
+            "and smoke is never reportable (docs/EVALUATION_PROTOCOL.md). "
+            "Metrics are in reports/smoke/metrics.json."
+        )
+    else:
+        _run_report(scale.value, check=False)
 
 
 if __name__ == "__main__":

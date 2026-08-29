@@ -159,7 +159,7 @@ declined to issue a guarantee has not demonstrated that it can.
 
 ### 12. How much of this is actually verified versus asserted?
 
-514 tests. The ones worth naming:
+542 tests. The ones worth naming:
 
 - The **temporal-leak test** was verified by deliberately re-introducing
   the leak and confirming it fails.
@@ -168,7 +168,20 @@ declined to issue a guarantee has not demonstrated that it can.
   rule, succeeding without it.
 - **Negative controls** (label-shuffle, random-features) confirm the
   pipeline finds nothing where nothing exists.
+- The **packaging tests** import the runtime modules from a temporary
+  directory, and were likewise verified by reverting the fix.
 - CI enforces leakage audits, the calibration seal, an image-licence
-  allowlist, and that the committed README matches `metrics.json`.
+  allowlist, doc links and anchors, and that the committed README matches
+  `metrics.json`.
 
 Where something is asserted rather than measured, it is labelled as such.
+
+**And the honest counterweight:** this count was 514 while `pramaan all`
+was silently skipping three of its five stages, while the installed
+package could not import its own modules, and while one test in this very
+suite was starting a real web server and hanging or not depending on
+whether a port was free. Both had been broken for
+several phases with CI green throughout, because the gates ran inside the
+development environment rather than against the shipped artifact. Test
+count is not evidence of correctness; the specific tests above are.
+[`LIMITATIONS.md`](LIMITATIONS.md) has the full account.

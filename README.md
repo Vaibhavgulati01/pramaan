@@ -8,6 +8,18 @@
 > Every refund desk runs on one assumption: a photograph is proof.
 > That assumption broke in 2026.
 
+![pramaan all --scale smoke](assets/demo.gif)
+
+<sub>A real recording of `pramaan all --scale smoke` — corpus build,
+training, Learn-then-Test certification, evaluation — captured by
+[`scripts/record_session.py`](scripts/record_session.py) and rendered by
+[`scripts/render_session_gif.py`](scripts/render_session_gif.py). Idle
+gaps are compressed; the true 10s duration is shown in the title bar.
+Note the certification step reporting **no rung certified** — at CI
+scale there are 50 calibration claims against the 45–222 denials the
+power analysis requires, and the system says so rather than issuing a
+guarantee it cannot support.</sub>
+
 PRAMAAN adjudicates the *evidence* attached to a refund, damage, or
 non-receipt claim and returns one of `APPROVE / REVIEW / DENY` — with a
 **distribution-free, finite-sample guarantee on the false-denial rate**,
@@ -17,7 +29,7 @@ decision rather than chosen by hand.
 ---
 
 **Status: Phases 0–8 complete; Phase 9 blocked on the full-scale run.**
-All mechanisms are built, tested (514 tests) and exercised end-to-end at
+All mechanisms are built, tested (542 tests) and exercised end-to-end at
 `dev` scale. What remains is the `full`-scale run on a larger machine —
 the runbook is [`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md), progress is
 tracked in [`PROGRESS.md`](PROGRESS.md). This README is a living document,
@@ -265,14 +277,32 @@ actuals against them, including the misses.
 git clone https://github.com/Vaibhavgulati01/pramaan && cd pramaan
 python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
 pip install -e ".[dev]"
-python -m pramaan.cli setup
-python -m pramaan.cli all --scale smoke   # <5 min, proves the pipeline runs (CI does this on every push)
-python -m pramaan.cli all --scale dev     # local mechanism validation, not a result
+pramaan setup
+pramaan all --scale smoke   # <5 min, proves the pipeline runs (CI does this on every push)
+pramaan all --scale dev     # local mechanism validation, not a result
 ```
 
+The `pramaan` console script above is the entry point CI exercises, and
+it is run **from outside the source tree** there on purpose — invoking
+`python -m pramaan.cli` from a checkout puts the working directory on
+`sys.path`, which once hid a wheel that could not import its own
+modules ([`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)).
+
 `make <target>` works identically wherever `make` is available (CI, the
-VM, Linux/Mac); on Windows without `make`, use the `python -m
-pramaan.cli` form above directly. Full-scale reproduction
+VM, Linux/Mac); on Windows without `make`, use the `pramaan` commands
+above directly.
+
+To regenerate the demo recording at the top of this file:
+
+```bash
+python scripts/record_session.py -o assets/session.jsonl -- pramaan all --scale smoke
+python scripts/render_session_gif.py assets/session.jsonl -o assets/demo.gif     --caption '$ pramaan all --scale smoke'
+```
+
+Recording and rendering are separate so a slow run is captured once and
+can be redrawn without re-running the pipeline. Absolute paths are
+redacted at capture time.
+ Full-scale reproduction
 (`make data-full && make train && make eval SCALE=full`) is documented in
 [`docs/REAL_DATA_ONRAMP.md`](docs/REAL_DATA_ONRAMP.md) and is run on a
 machine with real compute, not in CI.

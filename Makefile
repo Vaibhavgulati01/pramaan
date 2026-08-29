@@ -1,7 +1,7 @@
 # Thin wrapper around `pramaan.cli` — the CLI is the single source of
 # truth (see src/pramaan/cli.py). This exists for CI (ubuntu-latest has
 # `make`) and for the VM. On this Windows dev machine (no `make` binary),
-# use `python -m pramaan.cli <command>` directly — see README "Reproduce".
+# use `pramaan <command>` directly — see README "Reproduce".
 
 PY ?= python
 SCALE ?= dev

@@ -27,10 +27,18 @@ jobs:
       - name: Unit tests
         run: pytest --cov=pramaan --cov-report=term-missing
 
-      - name: CLI smoke
+      # Deliberately the installed console script, and deliberately NOT
+      # from the repo root. `python -m pramaan.cli` from the checkout puts
+      # cwd on sys.path, which silently substituted the source tree for the
+      # installed distribution and hid a wheel that omitted `benchmarks`
+      # and `eval` -- so `pramaan data` raised ModuleNotFoundError for
+      # anyone who installed the package. See tests/test_entry_point.py.
+      - name: CLI smoke (installed entry point, outside the source tree)
         run: |
-          python -m pramaan.cli --help
-          python -m pramaan.cli setup
+          cd "$RUNNER_TEMP"
+          pramaan --help
+          pramaan setup
+          python -c "import benchmarks.loaders, eval.run_eval, pramaan.fusion.pipeline"
 
       # No NC-licensed image derivative may be committed: ABO is CC BY-NC
       # 4.0 and the GenImage-derived set is CC BY-NC-SA 4.0, while this
@@ -76,7 +84,7 @@ jobs:
           restore-keys: pramaan-sources-v1-
 
       - name: pramaan all --scale smoke
-        run: python -m pramaan.cli all --scale smoke
+        run: pramaan all --scale smoke
 
       - name: Corpus integrity
         run: |

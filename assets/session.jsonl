@@ -1,0 +1,97 @@
+{"meta": {"command": "./.venv/Scripts/pramaan.exe all --scale smoke", "exit_code": 0, "duration_s": 9.589, "lines": 96}}
+{"t": 5.356, "line": "Python: 3.13.0 (~/pramaan\\.venv\\Scripts\\python.exe)"}
+{"t": 5.356, "line": ""}
+{"t": 5.356, "line": "  [OK  ] numpy                    2.1.3"}
+{"t": 5.356, "line": "  [OK  ] scipy                    1.14.1"}
+{"t": 5.356, "line": "  [OK  ] pandas                   2.2.3"}
+{"t": 5.356, "line": "  [OK  ] sklearn                  1.5.2"}
+{"t": 5.356, "line": "  [OK  ] lightgbm                 4.5.0"}
+{"t": 5.356, "line": "  [OK  ] faiss                    1.9.0"}
+{"t": 5.356, "line": "  [OK  ] torch                    2.8.0+cpu"}
+{"t": 5.356, "line": "  [OK  ] open_clip                2.29.0"}
+{"t": 5.356, "line": "  [OK  ] imagehash                4.3.2"}
+{"t": 5.356, "line": "  [OK  ] PIL                      11.0.0"}
+{"t": 5.356, "line": "  [OK  ] shap                     0.46.0"}
+{"t": 5.356, "line": "  [OK  ] rapidfuzz                3.10.1"}
+{"t": 5.356, "line": "  [OK  ] indic_transliteration    ?"}
+{"t": 5.356, "line": "  [OK  ] networkx                 3.4.2"}
+{"t": 5.356, "line": "  [OK  ] pydantic                 2.9.2"}
+{"t": 5.356, "line": "  [OK  ] hydra                    1.3.5"}
+{"t": 5.356, "line": "  [OK  ] fastapi                  0.115.14"}
+{"t": 5.356, "line": "  [OK  ] typer                    0.16.1"}
+{"t": 5.356, "line": "  [OK  ] piexif                   ?"}
+{"t": 5.356, "line": "  [OK  ] yaml                     6.0.3"}
+{"t": 5.356, "line": "  [OK  ] c2pa                     ?"}
+{"t": 5.356, "line": ""}
+{"t": 5.356, "line": "Environment OK."}
+{"t": 5.548, "line": "INFO simulating ledger: n_claims=200 merchants=1 seed=1337"}
+{"t": 5.606, "line": "INFO reconciling splits"}
+{"t": 5.639, "line": "INFO Reconciliation: no cross-split components (200 claims)."}
+{"t": 5.657, "line": "INFO split verification: OK: all 4 split constraints hold."}
+{"t": 5.658, "line": "INFO fetching source images (abo=205, genimage>=10/family)"}
+{"t": 6.11, "line": "INFO genimage: 2426 image(s) already cached"}
+{"t": 6.121, "line": "INFO writing 200 claim images to ~/pramaan\\data\\smoke\\images"}
+{"t": 7.745, "line": "INFO wrote manifest: ~/pramaan\\data\\smoke\\manifest.json (200 entries)"}
+{"t": 7.783, "line": ""}
+{"t": 7.783, "line": "PRAMAAN-Bench-v1 [smoke]"}
+{"t": 7.783, "line": "  claims:           200"}
+{"t": 7.783, "line": "  fraud prevalence: 0.120"}
+{"t": 7.783, "line": "  by split:         {'train': 116, 'calibration': 50, 'test': 34}"}
+{"t": 7.783, "line": "  reconciliation:   0 claim(s) dropped"}
+{"t": 7.783, "line": "  split verification: OK (generator-holdout, temporal, entity, ring)"}
+{"t": 7.824, "line": "INFO loading cached features from ~/pramaan\\data\\smoke\\_features\\features_e93f955e0b81c766.parquet"}
+{"t": 8.001, "line": "INFO saved model to ~/pramaan\\data\\smoke\\model"}
+{"t": 8.001, "line": ""}
+{"t": 8.001, "line": "Fusion model [smoke]"}
+{"t": 8.001, "line": "  train claims:        116"}
+{"t": 8.001, "line": "  features:            48 (schema 1.1.0)"}
+{"t": 8.002, "line": "  monotone constraints:  11"}
+{"t": 8.002, "line": "  calibrator cells:    0"}
+{"t": 8.002, "line": "  OOF Brier:           0.1052 raw -> 0.0833 calibrated"}
+{"t": 8.002, "line": ""}
+{"t": 8.002, "line": "  Calibration (TRAIN out-of-fold; calibrator fitted on these,"}
+{"t": 8.002, "line": "  so optimistic - a diagnostic, not a held-out result):"}
+{"t": 8.002, "line": "    Brier 0.0833 | ECE 0.0631 | MCE 0.1503 (n=116)"}
+{"t": 8.098, "line": "INFO wrote ~/pramaan\\reports\\smoke\\reliability_global_smoke.png"}
+{"t": 8.098, "line": ""}
+{"t": 8.098, "line": "  wrote reports\\smoke\\reliability_global_smoke.png"}
+{"t": 8.098, "line": ""}
+{"t": 8.098, "line": "  Gain by pillar (diagnostic - not the Phase 6 ablation):"}
+{"t": 8.098, "line": "    forensics     68.5%"}
+{"t": 8.098, "line": "    reuse         22.5%"}
+{"t": 8.098, "line": "    behaviour      9.0%"}
+{"t": 8.098, "line": "    provenance     0.0%"}
+{"t": 8.098, "line": "    ring           0.0%"}
+{"t": 8.154, "line": "INFO loading cached features from ~/pramaan\\data\\smoke\\_features\\features_e93f955e0b81c766.parquet"}
+{"t": 8.163, "line": "INFO calibration seal 9dd9dee553153990 (n=50)"}
+{"t": 8.241, "line": "INFO wrote ~/pramaan\\reports\\smoke\\certificate.json"}
+{"t": 8.241, "line": ""}
+{"t": 8.241, "line": "Learn-then-Test [smoke]"}
+{"t": 8.241, "line": "  DEV-SCALE: mechanism validation only, not a held-out result. The reportable certificate comes from the `full` tier (docs/EVALUATION_PROTOCOL.md)."}
+{"t": 8.241, "line": "  calibration split: n=50 (fraud=7)"}
+{"t": 8.241, "line": "  seal: 9dd9dee553153990..."}
+{"t": 8.241, "line": ""}
+{"t": 8.241, "line": "  ladder (every rung attempted, in pre-committed order):"}
+{"t": 8.241, "line": "    alpha=0.03  delta=0.1   failed     NO certified threshold at alpha=0.03, delta=0.1. no threshold reached 222 denials, the minimum that can certify alpha=0.03 at delta=0.1 even with zero errors"}
+{"t": 8.241, "line": "    alpha=0.05  delta=0.1   failed     NO certified threshold at alpha=0.05, delta=0.1. no threshold reached 131 denials, the minimum that can certify alpha=0.05 at delta=0.1 even with zero errors"}
+{"t": 8.242, "line": "    alpha=0.1   delta=0.1   failed     NO certified threshold at alpha=0.1, delta=0.1. no threshold reached 64 denials, the minimum that can certify alpha=0.1 at delta=0.1 even with zero errors"}
+{"t": 8.242, "line": "    alpha=0.1   delta=0.2   failed     NO certified threshold at alpha=0.1, delta=0.2. no threshold reached 45 denials, the minimum that can certify alpha=0.1 at delta=0.2 even with zero errors"}
+{"t": 8.242, "line": ""}
+{"t": 8.242, "line": "  RESULT: no rung certified. That is the published result -"}
+{"t": 8.242, "line": "  see docs/PREREGISTRATION.md for why the ladder is walked in a"}
+{"t": 8.242, "line": "  pre-committed order rather than searched."}
+{"t": 8.279, "line": "INFO loading cached features from ~/pramaan\\data\\smoke\\_features\\features_e93f955e0b81c766.parquet"}
+{"t": 8.847, "line": "INFO wrote ~/pramaan\\reports\\smoke\\metrics.json"}
+{"t": 8.848, "line": ""}
+{"t": 8.848, "line": "Evaluation [smoke] on the train split"}
+{"t": 8.848, "line": "  SMOKE \ufffd not a held-out result. Evaluated on the train split's out-of-fold predictions for mechanism validation only. See docs/EVALUATION_PROTOCOL.md."}
+{"t": 8.848, "line": "  claims: 116  prevalence: 0.095"}
+{"t": 8.848, "line": "  PR-AUC 0.1289 [0.0695, 0.2837]"}
+{"t": 8.848, "line": "  Brier 0.0833 | ECE 0.0631 | MCE 0.1503"}
+{"t": 8.848, "line": ""}
+{"t": 8.848, "line": "  Rs 33,888 per 1000 claims at 69.0% review load"}
+{"t": 8.848, "line": "    vs approve_all  Rs      398,552"}
+{"t": 8.848, "line": "    vs deny_all     Rs    4,526,560"}
+{"t": 8.848, "line": "    vs review_all   Rs       40,000"}
+{"t": 8.848, "line": ""}
+{"t": 8.848, "line": "Skipping `report`: it would inject smoke-tier numbers into README.md, and smoke is never reportable (docs/EVALUATION_PROTOCOL.md). Metrics are in reports/smoke/metrics.json."}

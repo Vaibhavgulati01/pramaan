@@ -1,15 +1,83 @@
 # Limitations
 
-> **Status: skeleton.** This is deliberately the last document to be
-> considered "done," even though it starts here in Phase 0 — every phase
-> should add to it as real limitations are discovered, and Phase 9 makes
-> a final pass. Per the spec: under repo-only judging this is arguably the
-> highest-ROI file in the repository. It should be long and specific, and
-> unflattering where warranted — a reviewer who reads a thorough
-> limitations section stops looking for the flaws you hid, because you've
-> demonstrated you already found them.
+> **Status: current through Phase 9's local work.** This file was started
+> in Phase 0 and added to as real limitations were found, rather than
+> written at the end. Under repo-only judging it is arguably the
+> highest-ROI file here: it should be long, specific, and unflattering
+> where warranted — a reviewer who reads a thorough limitations section
+> stops looking for the flaws you hid, because you've demonstrated you
+> already found them. The `full`-tier sections cannot close until the VM
+> run happens ([`VM_HANDOFF.md`](VM_HANDOFF.md)).
 
 ## Found while building (real, specific)
+
+### Four bugs from one root cause: the environment stood in for the product
+
+Found late, while recording the demo GIF, and grouped together because
+they are the same mistake wearing three hats. In each case the
+*development environment* supplied something the *shipped artifact* did
+not, and every gate we had was running inside that environment.
+
+**1. `pramaan all` silently skipped three of its five stages.** Long
+after Phase 6 delivered working `certify`, `eval` and `report`, the `all`
+command still called a Phase-1 stub that printed *"not implemented yet —
+it lands in Phase 6"* and returned. CI ran `pramaan all --scale smoke` on
+every push for four phases and stayed green the entire time, because the
+stub wrote to stderr and exited zero. The flagship command was a partial
+no-op and **the failure mode was that nothing failed**. Caught only
+because the last frame of the demo recording had the stub text in it.
+
+**2. The wheel omitted `benchmarks` and `eval`.** Installed library code
+imports both at module level, but `pyproject.toml` shipped only
+`src/pramaan`, so `pramaan data` raised `ModuleNotFoundError` for anyone
+who installed the package rather than cloning it. Invisible because every
+invocation went through `python -m pramaan.cli` *from the repo root*, and
+`python -m` puts the working directory on `sys.path` — the source tree
+was quietly substituting for the distribution.
+
+**3. `httpx` was undeclared.** Required by starlette's `TestClient`,
+present locally as a transitive dependency, absent from a clean install.
+CI failed at collection, which took down the whole suite rather than one
+module.
+
+**What we changed, beyond the three fixes.** Gates that run only inside
+the development environment cannot see this class of bug, so:
+
+- CI now invokes the **installed console script from outside the source
+  tree** (`cd $RUNNER_TEMP`), not `python -m` from the checkout.
+- `tests/test_entry_point.py` imports the runtime modules from a
+  temporary directory. Verified by reverting the packaging fix and
+  confirming exactly those tests fail.
+- `tests/test_cli_all_runs_every_stage.py` asserts the composition of
+  `all` directly, because an exit code demonstrably does not.
+
+**A fourth, found while fixing the first three.** The test suite itself
+had the same disease. `test_commands_are_invocable_and_fail_informatively`
+invoked every command with no `--scale`, so they defaulted to `dev` — and
+on a developer machine, where a `dev` corpus exists, the "unit test" ran a
+real train, certify, eval and **rewrote the tracked README**. On CI, with
+no `data/`, it took the fast error path it was actually written to test.
+Same test, two entirely different behaviours, decided by the environment.
+
+Worse, that loop invoked `serve`, which calls `uvicorn.run()` and blocks
+forever. Suite runtime therefore depended on **whether port 8000 happened
+to be free**: occupied gave a quick `SystemExit` and a green run, free
+hung the suite indefinitely. It passed for weeks and then stopped, with
+no change to the code under test. Both are fixed — the repo root is
+redirected to an empty directory so the no-corpus branch is
+deterministic, and `uvicorn.run` is stubbed.
+
+**What we are not claiming.** This class is not closed. These three were
+found by accident, not by a systematic audit, and the honest lesson is
+that a green CI badge measured our environment rather than our artifact
+for most of the build. Anything else installed-but-untested could still
+be broken the same way.
+
+**One test in this group is deliberately weaker than it looks**, and it
+is labelled as such in the file: `pramaan <cmd> --help` passes against
+the broken wheel, because Typer renders help without executing the
+command body. The import tests are what actually catch it.
+
 
 **Entity resolution is fuzzy, and fuzzy means wrong sometimes — in both
 directions.** Building Phase 1 surfaced this concretely rather than

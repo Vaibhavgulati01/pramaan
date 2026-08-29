@@ -34,10 +34,18 @@ ALLOWED_PREFIXES: dict[str, str] = {
     "reports/smoke/reliability_": "matplotlib plot of aggregate statistics; no image content",
     "docs/assets/architecture": "self-authored diagram",
     "demo/assets/": "self-authored or procedurally generated placeholder imagery",
+    "assets/demo.gif": (
+        "self-authored: frames rendered by scripts/render_session_gif.py from a "
+        "recording of our own CLI. Terminal text only, no dataset imagery"
+    ),
 }
 
 # Directories where derived imagery is most likely to appear by accident.
-SCANNED_DIRS = ("reports", "docs", "demo", "notebooks", "benchmarks", "src", "tests")
+# `assets` was missing here until the demo GIF landed in it, which meant a
+# dataset image dropped into assets/ would have passed the gate silently.
+SCANNED_DIRS = (
+    "assets", "reports", "docs", "demo", "notebooks", "benchmarks", "src", "tests",
+)
 
 
 def tracked_files() -> list[Path]:
