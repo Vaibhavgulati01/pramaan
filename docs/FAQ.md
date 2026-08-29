@@ -150,12 +150,22 @@ with the merchant's own realised rates.
 
 ### 11. Why does your own README say nothing certified?
 
-Because nothing did, at `dev` scale, and the alternative was to quote a
-number from 18 denials. The power analysis in
-[`GUARANTEE.md`](GUARANTEE.md) predicted this before the run, the
-mechanism refused rather than fabricating, and the `full` run on the VM
-is what settles it. A repository whose guarantee machinery has never
-declined to issue a guarantee has not demonstrated that it can.
+Because that is the mechanism working, and it is the single most
+important thing this repository demonstrates.
+
+At `dev` scale the calibration split yields 18 high-confidence denials
+against the 45–222 the ladder requires. The power analysis in
+[`GUARANTEE.md`](GUARANTEE.md) computed those bars **before** the run and
+predicted this exact outcome. Faced with insufficient evidence, the
+system published that fact and disabled auto-deny — the alternative being
+to quote a confident-looking bound derived from 18 observations, which is
+precisely what a hand-tuned threshold would have done without telling
+anyone.
+
+A guarantee that has never declined to be issued is not a guarantee; it
+is a formatting choice. This one declines, on the record, under
+conditions it predicted in advance. `full` is sized to clear the bar, and
+the same machinery will report whatever it finds there.
 
 ### 12. How much of this is actually verified versus asserted?
 

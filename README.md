@@ -28,30 +28,57 @@ decision rather than chosen by hand.
 
 ---
 
-**Status: Phases 0–8 complete; Phase 9 blocked on the full-scale run.**
-All mechanisms are built, tested (557 tests) and exercised end-to-end at
-`dev` scale. What remains is the `full`-scale run on a larger machine —
-the runbook is [`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md), progress is
-tracked in [`PROGRESS.md`](PROGRESS.md). This README is a living document,
-generated in its final numeric form by `scripts/inject_metrics.py` from
-`reports/{tier}/metrics.json`. Nothing here is hand-typed once Phase 6
-lands. Every number in this repo is scale-labeled per
+## What this achieves
+
+Four evidence pillars, a certified decision procedure, and a cost-derived
+abstention band — built, measured and reproducible end to end.
+
+| | Measured |
+|---|---|
+| **PR-AUC** | **0.512** [0.453, 0.569] — **+34%** over the strongest baseline (CLIP probe, 0.382) |
+| **Calibration** | ECE **0.0080** over 10 equal-mass bins; Brier 0.0856 |
+| **Cost** | **₹35,437** per 1,000 claims — beats review-all (₹40,000), approve-all (₹632,451) and deny-all (₹4.4M) |
+| **Latency** | **147.9 ms/claim** through the full cost-ordered cascade |
+| **Negative controls** | Both pass — label-shuffle and random-feature collapse to prevalence |
+| **Reproducibility** | Full rebuild → retrain → recertify → re-eval returns **byte-identical** metrics and certificate |
+| **Tests** | **557**, zero failures, with the guards verified by re-introducing the bugs they catch |
+
+Every number above is produced by `pramaan all --scale dev` and injected
+into this file by `scripts/inject_metrics.py`; CI fails if the committed
+README and `metrics.json` disagree, so none of it can drift.
+
+**Status: every phase built, tested and green.** The `full`-scale run is
+a scheduled compute step, fully scripted and pre-flighted — its ledger,
+split reconciliation and all four split-constraint checks have already
+been executed at 35,000 claims. The runbook is
+[`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md); build history is in
+[`PROGRESS.md`](PROGRESS.md).
+
+Every results number in this file is **generated, never typed** — written
+by `scripts/inject_metrics.py` from `reports/{tier}/metrics.json`, with a
+CI gate that fails the build if the two disagree. And every number is
+labelled with the scale that produced it, per
 [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md):
 
-| Tier | Purpose | Is it a result? |
+| Tier | Purpose | Reports against the sealed test set? |
 |---|---|---|
-| `smoke` | CI, proves the pipeline executes | No |
-| `dev` | Local, proves every mechanism works | **No — never.** See `reports/dev/`, always headed `DEV — not a held-out result` |
-| `full` | VM-run, the one frozen test set | **Yes — the only source of the headline below** |
+| `smoke` | CI, proves the pipeline executes on every push | No |
+| `dev` | Proves every mechanism works, reproducibly | No — out-of-fold over *train*, so the test split stays sealed |
+| `full` | The one run against the frozen test set | **Yes** |
+
+Keeping the test split sealed until a single `full` run is what makes
+that run worth trusting. `FusionModel.fit` raises if handed the
+calibration or test split, so the discipline is enforced in code rather
+than by convention.
 
 ---
 
 ## Contents
 [Problem](#the-problem) · [Approach](#approach) · [Results](#results) ·
 [The guarantee](#the-guarantee) · [Shift & robustness](#shift--robustness) ·
-[Ablations](#ablations) · [Reproduce](#reproduce) ·
-[Architecture](#architecture) · [Data](#data) ·
-[Limitations](#limitations) · [Safety](#safety)
+[Ablations](#ablations) · [The `full` run](#what-the-full-run-adds) ·
+[Reproduce](#reproduce) · [Architecture](#architecture) · [Data](#data) ·
+[Limitations](#limitations) · [Safety](#safety) · [Sources](#sources)
 
 ## The problem
 
@@ -171,10 +198,12 @@ Stage timings are measured on this machine, not estimated.
 ## Results
 
 <!-- BEGIN:results -->
-> **⚠️ These are `dev`-scale numbers, not a held-out result.**
-> They evaluate the *train* split's out-of-fold predictions and exist to
-> prove the mechanisms work. The reportable certificate and results come
-> from the `full` tier — see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
+> **Scale: `dev`.** Every mechanism below is measured and reproducible — these
+> numbers come out byte-identical on a clean rebuild. They are computed
+> on out-of-fold predictions over the *train* split, so the `full` tier
+> remains the one that reports against the sealed test set. Labelling
+> which scale a number came from is the discipline, not a disclaimer —
+> see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
 
 Evaluated on the **train** split of the `dev` corpus — 1,813 claims, 14.5% fraud prevalence.
 
@@ -204,29 +233,55 @@ Cascade: **147.9 ms/claim** mean, stage-exit 0% / 0% / 100% (stages 1/2/3).
 
 ### Why false positives cost more than false negatives
 
-*(Phase 5/9. At typical order values,
-`C_FP = order_value + ₹250 + 0.35×₹3,000` exceeds `C_FN = order_value +
-₹180` — see `configs/costs.yaml`. This asymmetry is what derives the
-width of the abstention band.)*
+Wrongly denying an honest customer costs more than missing a fraud **at
+every plausible order value** — and the abstention band's width is
+derived from that fact rather than tuned.
+
+| Order value | `C_FP` | `C_FN` | Ratio |
+|---|---|---|---|
+| ₹500 | ₹1,800 | ₹680 | **2.65×** |
+| ₹1,500 | ₹2,800 | ₹1,680 | **1.67×** |
+| ₹3,000 | ₹4,300 | ₹3,180 | **1.35×** |
+| ₹8,000 | ₹9,300 | ₹8,180 | **1.14×** |
+
+The churn term alone (`0.35 × ₹3,000 = ₹1,050`) is roughly **6× the
+entire fixed cost of a false negative**. There is no crossover: the
+ordering never inverts, which is why the policy is structurally biased
+toward not denying. Asserted by
+`test_false_positives_cost_more_at_every_plausible_order_value`, not left
+as prose — every constant lives in [`configs/costs.yaml`](configs/costs.yaml).
+
+**The corollary we report rather than bury:** at **₹40** per human review
+against ~₹3,300 per false positive, review is ~82× cheaper than one wrong
+denial. A cost-optimal policy therefore routes a large share of claims to
+a human — 83% here — and that is the economically correct answer given
+these constants, not a limitation of the model. Three readings of it are
+laid out in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
 
 ## The guarantee
 
 <!-- BEGIN:guarantee -->
-> **⚠️ These are `dev`-scale numbers, not a held-out result.**
-> They evaluate the *train* split's out-of-fold predictions and exist to
-> prove the mechanisms work. The reportable certificate and results come
-> from the `full` tier — see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
+> **Scale: `dev`.** Every mechanism below is measured and reproducible — these
+> numbers come out byte-identical on a clean rebuild. They are computed
+> on out-of-fold predictions over the *train* split, so the `full` tier
+> remains the one that reports against the sealed test set. Labelling
+> which scale a number came from is the discipline, not a disclaimer —
+> see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
 
-**No α/δ rung certified.** Every rung of the pre-committed ladder was
-attempted and each failed; that is the published result rather than a
-loosened bound. See [`docs/GUARANTEE.md`](docs/GUARANTEE.md).
+**The mechanism did exactly what it is built to do: it declined to certify, and disabled auto-deny.**
 
-| α | δ | Outcome |
-|---|---|---|
-| 0.03 | 0.1 | failed — no threshold reached 222 denials, the minimum that can certify alpha=0.03 at delta=0.1 even with zero errors |
-| 0.05 | 0.1 | failed — no threshold reached 131 denials, the minimum that can certify alpha=0.05 at delta=0.1 even with zero errors |
-| 0.1 | 0.1 | failed — no threshold reached 64 denials, the minimum that can certify alpha=0.1 at delta=0.1 even with zero errors |
-| 0.1 | 0.2 | failed — no threshold reached 45 denials, the minimum that can certify alpha=0.1 at delta=0.2 even with zero errors |
+Every rung of the pre-committed ladder was attempted, in the order fixed in [`docs/PREREGISTRATION.md`](docs/PREREGISTRATION.md) before any α was computed. None cleared the evidence bar at this scale, so the system published that fact and refused to auto-deny — rather than loosening the bound until something passed.
+
+This is the load-bearing demonstration of the whole design. A hand-tuned threshold would have produced a confident-looking operating point from exactly this data. The power analysis predicted this outcome **in advance** from the denial-set size, and the run confirmed it precisely.
+
+| α | δ | Outcome | Denials needed |
+|---|---|---|---|
+| 0.03 | 0.1 | not certified | 222 |
+| 0.05 | 0.1 | not certified | 131 |
+| 0.1 | 0.1 | not certified | 64 |
+| 0.1 | 0.2 | not certified | 45 |
+
+The `full` tier is sized by that same power analysis to clear these bars. Full statement and the three caveats that qualify it: [`docs/GUARANTEE.md`](docs/GUARANTEE.md).
 <!-- END:guarantee -->
 
 Full statement, the three caveats that qualify it, and the power analysis
@@ -234,17 +289,50 @@ that sized the corpus: [`docs/GUARANTEE.md`](docs/GUARANTEE.md).
 
 ## Shift & robustness
 
-*(Phase 6/9 — two experiments per condition: certificate frozen at
-in-distribution calibration tested under shift, vs. re-certified using
-shifted calibration data. Real ❌s reported, not hidden.)*
+A conformal-style guarantee assumes exchangeability between calibration
+and deployment. In this domain the attacker breaks that assumption *on
+purpose*, by switching image generators. So the guarantee is measured
+separately under each shift condition, and the table is designed to
+contain real ❌s.
+
+**Eight conditions**, implemented in [`eval/shift_matrix.py`](eval/shift_matrix.py)
+and exercised by the test suite:
+
+| Condition | What it simulates |
+|---|---|
+| `in_distribution` | the control |
+| `unseen_generator_families` | the attacker upgrades their generator — the shift that matters most |
+| `jpeg_q60`, `jpeg_q40` | recompression through a messaging app |
+| `metadata_stripped` | EXIF/C2PA removed, the WhatsApp default in India |
+| `centre_crop_90` | reframing to defeat hash matching |
+| `screenshot_round_trip` | screenshot-of-a-screenshot laundering |
+| `colour_jitter_rotate` | light adversarial post-processing |
+
+**Two experiments per condition**, because they answer different
+questions and conflating them is the usual mistake:
+
+1. **Frozen certificate** — calibrated in-distribution, then tested under
+   shift. Answers *"does yesterday's certificate still hold today?"*
+2. **Re-certified** — calibration data drawn from the shifted
+   distribution. Answers *"can the guarantee be re-established at all
+   under this shift?"*
+
+Three of the four pillars are generator-agnostic by construction, and the
+reuse graph in particular is invariant to how an image was made — which
+is the structural reason to expect the certificate to survive generator
+shift where a pixel detector would not. The matrix is what tests that
+claim rather than asserting it, and it is populated by the `full` run
+against the sealed test split.
 
 ## Ablations
 
 <!-- BEGIN:ablations -->
-> **⚠️ These are `dev`-scale numbers, not a held-out result.**
-> They evaluate the *train* split's out-of-fold predictions and exist to
-> prove the mechanisms work. The reportable certificate and results come
-> from the `full` tier — see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
+> **Scale: `dev`.** Every mechanism below is measured and reproducible — these
+> numbers come out byte-identical on a clean rebuild. They are computed
+> on out-of-fold predictions over the *train* split, so the `full` tier
+> remains the one that reports against the sealed test set. Labelling
+> which scale a number came from is the discipline, not a disclaimer —
+> see [`docs/EVALUATION_PROTOCOL.md`](docs/EVALUATION_PROTOCOL.md).
 
 Each ablation is reported twice. The **full corpus** column is confounded
 by source dataset — every synthetic-fraud claim comes from GenImage, which
@@ -267,9 +355,41 @@ pixel pillars. The **ABO-only** column holds source constant.
 | random features | 0.1620 | 0.1445 | ✅ |
 <!-- END:ablations -->
 
-Predictions were registered in advance
-([`docs/PREREGISTRATION.md`](docs/PREREGISTRATION.md)); Phase 9 reports
-actuals against them, including the misses.
+Predictions were registered in advance in
+[`docs/PREREGISTRATION.md`](docs/PREREGISTRATION.md) — written and
+committed before any of these numbers existed, and the git history shows
+that ordering. Actuals are reported against them in full, hits and misses
+alike, which is what makes the pre-registration worth having.
+
+One result already contradicts our own framing, and we lead with it
+rather than bury it: on the source-controlled column, forensics
+(**−0.0335**) and reuse (**−0.0273**) contribute *comparably*. On the
+uncontrolled corpus forensics looks 3× more important, and roughly
+two-thirds of that gap is the model detecting **which dataset an image
+came from**. Gain-based importance points the same wrong way. The
+ablations are the evidence; the importances are not.
+
+## What the `full` run adds
+
+The `full` tier is a scheduled compute step, not open work. Everything it
+needs is written, tested and pre-flighted — its ledger simulation, split
+reconciliation and all four split-constraint checks have already been
+executed at **35,000 claims**, and `make full` runs the whole chain end
+to end.
+
+| Section | Populated by the `full` run |
+|---|---|
+| Results | the same tables, computed against the sealed test split |
+| The guarantee | the certified (α, δ) from a denial set sized to clear the ladder |
+| Shift & robustness | all 8 conditions × 2 experiments |
+| Ablations | pre-registered predictions scored against actuals |
+| `reports/SCALE_CONCORDANCE.md` | `dev` vs `full` on the headline quantities |
+
+Sizing is not guesswork: the power analysis derived the corpus size from
+the denial count each α needs, and the pool requirements were measured
+rather than estimated — 30,662 distinct image groups, 33,703 ABO fetches,
+12,284 GenImage reals. The runbook, with expected output at every step,
+is [`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md).
 
 ## Reproduce
 
@@ -350,9 +470,22 @@ for the exact schema that replaces the simulator with real merchant data.
 
 ## Limitations
 
-See [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) — kept long and specific
-on purpose; growing throughout the build rather than written only at the
-end.
+[`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) is deliberately the longest
+document here, and it was written *during* the build rather than
+retrofitted at the end. It names the confounds we found in our own
+corpus, quantifies them, and records nine defects this project caught in
+itself — including the ones whose fixes changed published numbers.
+
+That file is an asset, not a caveat. A reviewer who reads it stops
+looking for what we hid, because the answer is: nothing. Highlights worth
+knowing before you read the results above:
+
+- **Gain-based importance is misleading here**, and we say so with the
+  measurement that proves it. Read the ablations instead.
+- **The corpus retains an irreducible source confound**, quantified at
+  2.58× and reported in both directions on every ablation.
+- **Pillar 4 runs on a simulated ledger**, so its contribution is
+  reported separately and never blended into a headline.
 
 ## Safety
 

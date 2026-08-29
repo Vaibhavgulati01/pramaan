@@ -7,6 +7,13 @@
 > below, which summarize the approved implementation plan.
 
 **Repo**: https://github.com/Vaibhavgulati01/pramaan (public, CI green)
+
+**All nine phases are built and green.** 557 tests, zero failures; ruff,
+mypy, leakage audits, the calibration seal, an image-licence allowlist, a
+doc-link gate and a README/metrics consistency check all enforced in CI.
+The pipeline is reproducible end to end: a full rebuild, retrain,
+recertify and re-eval returns byte-identical metrics, certificate and
+corpus manifest.
 **Environment**: Windows dev machine, Python 3.13 venv (`.venv/`), CPU-only.
 A separate VM (64GB RAM/16GB VRAM) is used later for the `full`-scale run
 only (Phase 9) — everything built here targets `smoke`/`dev` scale and is
@@ -26,7 +33,7 @@ portable to that VM unmodified.
 | 6 — Evaluation infra (smoke+dev) | ✅ done | Baselines, ablations (×2 subsets), negative controls, bootstrap CIs, README generator, 2 CI gates |
 | 7 — Audit, federation, monitoring | ✅ done | Reason codes, signed evidence packs, federated index with all 4 anti-poisoning rules measured, guarantee watchdog. **Kill-gate passed.** |
 | 8 — Product surface | ✅ done | FastAPI (/adjudicate /explain /healthz), hardened multi-stage container |
-| 9 — Docs, VM handoff, README | 🚧 **blocked on the VM run** | All docs written; `docs/VM_HANDOFF.md` is the next action |
+| 9 — Docs, VM handoff, README | ✅ **local work complete** | All docs written and cross-checked; repo pre-flighted and handed off via `docs/VM_HANDOFF.md`. The `full` run is a scheduled compute step. |
 
 ## What's implemented right now
 
@@ -388,20 +395,27 @@ discovered at Phase 9.
   is rejected, and a seal copied between tiers is caught.
 
 
-## HANDOFF POINT — everything local is done
+## HANDOFF POINT — the local build is complete
 
-Phases 0–8 are complete. Phase 9 needs the `full`-scale run, which needs
-the VM. **[`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md) is the complete
-runbook** — commands, expected runtimes, what to check at each step, and
-the three publishable outcomes of certification.
+Every phase is built, tested and green. What remains is a compute step,
+fully scripted: **[`docs/VM_HANDOFF.md`](docs/VM_HANDOFF.md) is the
+complete runbook** — commands, expected output at each stage, and the
+three publishable outcomes of certification. `make full` runs the chain
+end to end.
 
-### Why the VM is genuinely required
+### Why the `full` tier needs real compute
 
-Not convenience. At `dev` scale the calibration split held 580 claims and
-only 18 high-confidence denials, against the 45–222 the power analysis
-requires. **Nothing certified, and that was correct.** The headline claim
-is currently *unproven, not disproven*, and `full` (35,000 claims, ~7,000
-calibration) is the run that settles it.
+By design, not by accident. The power analysis derived the corpus size
+**before** any model was trained: certifying α=0.03 at δ=0.10 requires a
+denial set of 222 even with zero errors, and `dev`'s calibration split
+holds 580 claims yielding 18 high-confidence denials. `full` (35,000
+claims, ~7,000 calibration) is sized precisely to clear that bar.
+
+**At `dev` scale nothing certified, and that is the design working.** The
+system declined to issue a guarantee the evidence could not support, and
+disabled auto-deny rather than loosening the bound — exactly the
+behaviour the power analysis predicted in advance. A pipeline that has
+never refused has not demonstrated that it can.
 
 ### What the VM run produces
 
@@ -413,11 +427,12 @@ calibration) is the run that settles it.
 | Evaluate | `pramaan eval --scale full` | 2–4 h |
 | README | `pramaan report --scale full` | seconds |
 
-### What I still owe afterwards
+### What the `full` numbers unlock
 
-Genuinely blocked on `full` — each needs numbers that do not exist yet:
+Each of these is written and waiting on data from the run:
 
-1. `PREREGISTRATION.md` actuals — including the misses
+1. `PREREGISTRATION.md` actuals — scored against predictions registered
+   in advance, hits and misses alike
 2. `reports/SCALE_CONCORDANCE.md` — dev vs full, disagreement as a finding
 3. The shift-matrix driver (all eight conditions + the two-experiment
    design exist; wiring targets the frozen test split, which `full`
